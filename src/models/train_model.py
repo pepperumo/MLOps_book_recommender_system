@@ -652,7 +652,7 @@ class BookRecommender:
     
     def save(self, model_dir: str = 'models') -> bool:
         """
-        Save the trained model to files.
+        Save the trained model to a single file.
         
         Parameters
         ----------
@@ -670,35 +670,14 @@ class BookRecommender:
             # Create directory if it doesn't exist
             os.makedirs(model_dir, exist_ok=True)
             
-            # Save the model using pickle
+            # Save the model using pickle - this contains everything in one file
             model_path = os.path.join(model_dir, 'book_recommender.pkl')
             with open(model_path, 'wb') as f:
                 pickle.dump(self, f)
-                
-            # Save also individual matrices for potential future use without loading the entire model
-            if self.user_item_matrix is not None:
-                save_npz(os.path.join(model_dir, 'user_item_matrix.npz'), self.user_item_matrix)
-                logger.info(f"Saved user-item matrix with shape {self.user_item_matrix.shape}")
-                
-            if self.book_feature_matrix is not None:
-                save_npz(os.path.join(model_dir, 'book_feature_matrix.npz'), self.book_feature_matrix)
-                logger.info(f"Saved book feature matrix with shape {self.book_feature_matrix.shape}")
-                
-            if self.book_similarity_matrix is not None:
-                save_npz(os.path.join(model_dir, 'book_similarity_matrix.npz'), self.book_similarity_matrix)
-                logger.info(f"Saved book similarity matrix with shape {self.book_similarity_matrix.shape}")
-                
-            if self.book_ids is not None:
-                np.save(os.path.join(model_dir, 'book_ids.npy'), self.book_ids)
-                logger.info(f"Saved {len(self.book_ids)} book IDs")
-                
-            if self.feature_names is not None:
-                with open(os.path.join(model_dir, 'feature_names.txt'), 'w') as f:
-                    for name in self.feature_names:
-                        f.write(f"{name}\n")
-                logger.info(f"Saved {len(self.feature_names)} feature names")
-                
-            # Save metadata about the model
+            
+            logger.info(f"Model saved successfully to {model_path}")
+            
+            # Save minimal metadata about the model in JSON format
             metadata = {
                 'user_count': len(self.user_ids) if self.user_item_matrix is not None else 0,
                 'book_count': self.user_item_matrix.shape[1] if self.user_item_matrix is not None else 0,
@@ -707,16 +686,9 @@ class BookRecommender:
                 'timestamp': timestamp
             }
             
+            # Only save essential metadata file
             with open(os.path.join(model_dir, 'model_metadata.json'), 'w') as f:
                 json.dump(metadata, f, indent=4)
-                
-            # Save metadata as CSV for easier reading in Excel/other tools
-            results_dir = os.path.join('data', 'results')
-            os.makedirs(results_dir, exist_ok=True)
-            pd.DataFrame([metadata]).to_csv(
-                os.path.join(results_dir, f'model_metadata_{timestamp}.csv'), 
-                index=False
-            )
                 
             logger.info(f"Model saved successfully to {model_dir}")
             return True

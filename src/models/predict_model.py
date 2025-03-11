@@ -213,7 +213,7 @@ def recommend_for_user(user_id: int, model_path: str = 'models/book_recommender.
     """
     logger.info(f"Generating recommendations for user {user_id} using strategy '{strategy}'")
     
-    # Load the model
+    # Load the model - now the model contains all the necessary matrices
     try:
         with open(model_path, 'rb') as f:
             recommender = pickle.load(f)
@@ -223,24 +223,6 @@ def recommend_for_user(user_id: int, model_path: str = 'models/book_recommender.
         return pd.DataFrame()
     except Exception as e:
         logger.error(f"Error loading model: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load the matrices that weren't included in the pickled model
-    try:
-        features_dir = os.path.join(data_dir, 'features')
-        user_item_matrix, book_feature_matrix, book_similarity_matrix, book_ids, feature_names = load_data(features_dir)
-        
-        # Set the matrices in the recommender
-        recommender.user_item_matrix = user_item_matrix
-        recommender.book_feature_matrix = book_feature_matrix
-        recommender.book_similarity_matrix = book_similarity_matrix
-        recommender.book_ids = book_ids
-        recommender.feature_names = feature_names
-        
-        logger.info(f"Loaded matrices: user-item {user_item_matrix.shape}, book-feature {book_feature_matrix.shape}")
-    except Exception as e:
-        logger.error(f"Error loading matrices: {e}")
         logger.debug(traceback.format_exc())
         return pd.DataFrame()
     
@@ -308,7 +290,7 @@ def recommend_similar_books(book_id: int, model_path: str = 'models/book_recomme
     """
     logger.info(f"Finding similar books to book ID {book_id}")
     
-    # Load the model
+    # Load the model - now the model contains all the necessary matrices
     try:
         with open(model_path, 'rb') as f:
             recommender = pickle.load(f)
@@ -318,24 +300,6 @@ def recommend_similar_books(book_id: int, model_path: str = 'models/book_recomme
         return pd.DataFrame()
     except Exception as e:
         logger.error(f"Error loading model: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load the matrices that weren't included in the pickled model
-    try:
-        features_dir = os.path.join(data_dir, 'features')
-        user_item_matrix, book_feature_matrix, book_similarity_matrix, book_ids, feature_names = load_data(features_dir)
-        
-        # Set the matrices in the recommender
-        recommender.user_item_matrix = user_item_matrix
-        recommender.book_feature_matrix = book_feature_matrix
-        recommender.book_similarity_matrix = book_similarity_matrix
-        recommender.book_ids = book_ids
-        recommender.feature_names = feature_names
-        
-        logger.info(f"Loaded matrices: user-item {user_item_matrix.shape}, book-feature {book_feature_matrix.shape}")
-    except Exception as e:
-        logger.error(f"Error loading matrices: {e}")
         logger.debug(traceback.format_exc())
         return pd.DataFrame()
     

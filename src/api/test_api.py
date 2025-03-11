@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 import time
 
 # Configuration
-BASE_URL = "http://localhost:8003"  # Change this if your API runs on a different port
+BASE_URL = "http://localhost:8001"  # Change this if your API runs on a different port
 VALID_USER_ID = 1
 INVALID_USER_ID = 999999
 VALID_BOOK_ID = 1

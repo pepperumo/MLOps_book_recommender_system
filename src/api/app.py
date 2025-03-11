@@ -46,31 +46,18 @@ def load_model(model_path: str = "models/book_recommender.pkl",
     logger.info(f"Loading recommender model from {model_path}")
     
     try:
-        # First, let's directly load the matrices and data instead of unpickling the whole model
-        # This avoids the pickle class loading issue
-        features_dir = os.path.join(os.path.dirname(model_path), "..", "data", "features")
+        # Load the complete model from the pickle file
+        with open(model_path, 'rb') as f:
+            recommender = pickle.load(f)
         
-        # Load matrices
-        user_item_matrix = sp.load_npz(os.path.join(features_dir, "user_item_matrix.npz"))
-        book_features = sp.load_npz(os.path.join(features_dir, "book_feature_matrix.npz"))
-        book_similarity = sp.load_npz(os.path.join(features_dir, "book_similarity_matrix.npz"))
+        # Extract the matrices we need
+        user_item_matrix = recommender.user_item_matrix
+        book_features = recommender.book_feature_matrix
         
-        # Load book IDs and feature names
-        book_ids = pd.read_csv(os.path.join(features_dir, "book_ids.csv"))["book_id"].values
-        feature_names = pd.read_csv(os.path.join(features_dir, "feature_names.csv"))["feature"].values
-        
-        # Create a new BookRecommender instance with the loaded data
-        recommender = BookRecommender()
-        recommender.user_item_matrix = user_item_matrix
-        recommender.book_features = book_features
-        recommender.book_similarity_matrix = book_similarity
-        recommender.book_ids = book_ids
-        recommender.feature_names = feature_names
-        
-        logger.info(f"Loaded model components with user-item matrix shape: {user_item_matrix.shape}")
+        logger.info(f"Loaded model from {model_path} with user-item matrix shape: {user_item_matrix.shape}")
         return recommender, user_item_matrix, book_features
     except Exception as e:
-        logger.error(f"Error loading model components: {str(e)}")
+        logger.error(f"Error loading model: {str(e)}")
         raise RuntimeError(f"Failed to load model: {str(e)}")
 
 # Configure logging
@@ -137,10 +124,7 @@ async def startup_event():
         logger.info(f"Checking for model components in {models_dir}")
         
         required_files = [
-            os.path.join(models_dir, "user_item_matrix.npz"),
-            os.path.join(models_dir, "book_feature_matrix.npz"),
-            os.path.join(models_dir, "book_similarity_matrix.npz"),
-            os.path.join(models_dir, "book_ids.npy"),  # Note: using .npy instead of .csv
+            os.path.join(models_dir, "book_recommender.pkl"),
             os.path.join(processed_dir, "merged_train.csv")
         ]
         
@@ -156,46 +140,42 @@ async def startup_event():
         # Load model components
         logger.info("Loading model components...")
         try:
-            # Load the sparse matrices from NPZ files
-            user_item_matrix = sp.load_npz(os.path.join(models_dir, "user_item_matrix.npz"))
-            book_features = sp.load_npz(os.path.join(models_dir, "book_feature_matrix.npz"))
-            book_similarity = sp.load_npz(os.path.join(models_dir, "book_similarity_matrix.npz"))
+            # Load the complete model from the pickle file
+            model_pickle_path = os.path.join(models_dir, "book_recommender.pkl")
+            logger.info(f"Loading model from pickle file: {model_pickle_path}")
+            with open(model_pickle_path, 'rb') as f:
+                recommender = pickle.load(f)
             
-            # Load book IDs and feature names
-            book_ids = np.load(os.path.join(models_dir, "book_ids.npy"))
-            
-            try:
-                with open(os.path.join(models_dir, "feature_names.json"), 'r') as f:
-                    feature_names = json.load(f)
-            except:
-                # If feature names JSON isn't available, use default placeholder
-                feature_names = [f"feature_{i}" for i in range(book_features.shape[1])]
-                logger.warning(f"Feature names file not found, using placeholders for {len(feature_names)} features")
+            # Extract the matrices we need
+            user_item_matrix = recommender.user_item_matrix
+            book_features = recommender.book_feature_matrix
             
             # Create the recommender object
-            recommender = BookRecommender(
-                user_item_matrix=user_item_matrix,
-                book_feature_matrix=book_features,
-                book_similarity_matrix=book_similarity,
-                book_ids=book_ids,
-                feature_names=feature_names
-            )
-            
-            # Store in app state
             app.state.recommender = recommender
             app.state.user_item_matrix = user_item_matrix
             app.state.book_features = book_features
+            
+            # Debug logs to verify items were set correctly
+            logger.info(f"Debug - app.state.recommender type: {type(app.state.recommender)}")
+            logger.info(f"Debug - app.state.user_item_matrix type: {type(app.state.user_item_matrix)}")
+            logger.info(f"Debug - app.state.book_features type: {type(app.state.book_features)}")
             
             logger.info(f"Loaded model with user-item matrix shape: {user_item_matrix.shape}")
             logger.info(f"Loaded book features with shape: {book_features.shape}")
         except Exception as e:
             logger.error(f"Error loading model components: {str(e)}")
+            logger.error(f"Exception details: {traceback.format_exc()}")
             raise
         
         # Load book metadata
         try:
             logger.info("Loading book metadata...")
-            app.state.book_metadata = pd.read_csv(os.path.join(processed_dir, "merged_train.csv")).drop_duplicates(subset=["book_id"])
+            metadata_path = os.path.join(processed_dir, "merged_train.csv")
+            logger.info(f"Loading book metadata from: {metadata_path}")
+            app.state.book_metadata = pd.read_csv(metadata_path).drop_duplicates(subset=["book_id"])
+            
+            # Debug log to verify
+            logger.info(f"Debug - app.state.book_metadata type: {type(app.state.book_metadata)} with shape: {app.state.book_metadata.shape}")
             
             # Try to load mapping file if it exists
             mapping_path = os.path.join(models_dir, "book_id_mapping.csv")
@@ -209,14 +189,17 @@ async def startup_event():
             logger.info(f"Loaded book metadata for {len(app.state.book_metadata)} books")
         except Exception as e:
             logger.error(f"Error loading book metadata: {str(e)}")
+            logger.error(f"Exception details: {traceback.format_exc()}")
             raise
             
         # Mark model as successfully loaded
         app.state.model_loaded = True
         logger.info("Model and data successfully loaded")
+        logger.info(f"Final model_loaded state: {app.state.model_loaded}")
             
     except Exception as e:
         logger.error(f"Failed to load model or data: {str(e)}")
+        logger.error(f"Exception details: {traceback.format_exc()}")
         logger.warning("API will start but recommendation endpoints will return errors")
 
 # Pydantic models for request/response validation
@@ -367,10 +350,33 @@ async def health_check():
     Returns:
         dict: Status of the API and model
     """
+    # Check if model is actually loaded by verifying the model components
+    has_recommender = hasattr(app.state, "recommender") and app.state.recommender is not None
+    has_user_item_matrix = hasattr(app.state, "user_item_matrix") and app.state.user_item_matrix is not None
+    has_book_metadata = hasattr(app.state, "book_metadata") and app.state.book_metadata is not None
+    
+    model_loaded = has_recommender and has_user_item_matrix and has_book_metadata
+    
+    # Log detailed component status for debugging
+    logger.info(f"Health check: has_recommender={has_recommender}, has_user_item_matrix={has_user_item_matrix}, has_book_metadata={has_book_metadata}")
+    logger.info(f"Health check result: model_loaded={model_loaded}")
+    
+    if not model_loaded:
+        # Log more detail about what exactly is missing
+        if not has_recommender:
+            logger.warning("Recommender model not found in app state")
+        if not has_user_item_matrix:
+            logger.warning("User-item matrix not found in app state")
+        if not has_book_metadata:
+            logger.warning("Book metadata not found in app state")
+    
+    # Update the model_loaded flag based on actual state
+    app.state.model_loaded = model_loaded
+    
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "model_loaded": getattr(app.state, "model_loaded", False)
+        "model_loaded": model_loaded
     }
 
 # GET books with pagination and filtering
