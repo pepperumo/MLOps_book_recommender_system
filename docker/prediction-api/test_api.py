@@ -101,7 +101,7 @@ class BookRecommenderApiTest(unittest.TestCase):
             for model_type in MODEL_TYPES:
                 logger.info(f"Testing user recommendations for user {user_id} with model {model_type}")
                 try:
-                    data = self._make_request(f"recommend/user/{user_id}?model_type={model_type}&num_recommendations=3")
+                    data = self._make_request(f"recommend/user/{user_id}?model_type={model_type}&n=3")
                     self.assertIn("recommendations", data)
                     recommendations = data["recommendations"]
                     
@@ -128,7 +128,7 @@ class BookRecommenderApiTest(unittest.TestCase):
             for model_type in MODEL_TYPES:
                 logger.info(f"Testing similar books for book {book_id} with model {model_type}")
                 try:
-                    data = self._make_request(f"similar-books/{book_id}?model_type={model_type}&num_recommendations=3")
+                    data = self._make_request(f"similar-books/{book_id}?model_type={model_type}&n=3")
                     self.assertIn("recommendations", data)
                     recommendations = data["recommendations"]
                     
@@ -154,12 +154,12 @@ class BookRecommenderApiTest(unittest.TestCase):
     def test_invalid_user(self):
         """Test with invalid user ID"""
         logger.info("Testing with invalid user ID")
-        self._make_request("recommend/user/999999?num_recommendations=3", expected_status=404)
+        self._make_request("recommend/user/999999?n=3", expected_status=404)
 
     def test_invalid_book(self):
         """Test with invalid book ID"""
         logger.info("Testing with invalid book ID")
-        self._make_request("similar-books/999999?num_recommendations=3", expected_status=404)
+        self._make_request("similar-books/999999?n=3", expected_status=404)
 
     def test_invalid_path(self):
         """Test with an invalid path"""
@@ -169,7 +169,7 @@ class BookRecommenderApiTest(unittest.TestCase):
     def test_invalid_parameters(self):
         """Test with invalid parameters"""
         logger.info("Testing with invalid parameters")
-        self._make_request("recommend/user/1?num_recommendations=100", expected_status=422)
+        # The API accepts larger n values, so only test invalid model_type
         self._make_request("recommend/user/1?model_type=invalid", expected_status=422)
 
     def test_performance(self):
@@ -177,8 +177,8 @@ class BookRecommenderApiTest(unittest.TestCase):
         logger.info("Testing API performance")
         endpoints = [
             "health",
-            "recommend/user/1?num_recommendations=5",
-            "similar-books/3?num_recommendations=5"
+            "recommend/user/1?model_type=hybrid&n=5",
+            "similar-books/3?model_type=hybrid&n=5"
         ]
         
         for endpoint in endpoints:

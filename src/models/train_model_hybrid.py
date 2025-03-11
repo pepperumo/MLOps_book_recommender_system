@@ -16,7 +16,7 @@ from datetime import datetime
 import argparse
 import pickle
 
-from .train_model_base import BaseRecommender, load_data, evaluate_model_with_test_data
+from .train_model_base import BaseRecommender, load_data
 from .train_model_collaborative import CollaborativeRecommender
 from .train_model_content import ContentBasedRecommender
 
@@ -216,62 +216,6 @@ class HybridRecommender(BaseRecommender):
             logger.error(f"Error generating hybrid similar books for book {book_id}: {e}")
             return []
     
-    def evaluate(self, test_df, k_values, strategies):
-        """
-        Evaluate the hybrid recommender model using precision@k and recall@k.
-        
-        Parameters
-        ----------
-        test_df : pandas.DataFrame
-            Test data with user_id and book_id columns
-        k_values : list
-            List of k values to evaluate
-        strategies : list
-            List of strategies to evaluate
-            
-        Returns
-        -------
-        dict
-            Evaluation results
-        """
-        # We only support hybrid strategy
-        if 'hybrid' not in strategies:
-            return {}
-            
-        results = {'hybrid': {}}
-        
-        # Group test data by user
-        test_users = test_df.groupby('user_id')['book_id'].apply(list).to_dict()
-        
-        # Calculate precision and recall for each k value
-        for k in k_values:
-            precisions = []
-            recalls = []
-            
-            for user_id, true_books in test_users.items():
-                # Skip users not in training data
-                if user_id not in self.user_ids:
-                    continue
-                    
-                # Get recommendations for this user
-                recs = self.recommend_for_user(user_id, n_recommendations=k)
-                
-                # Calculate precision and recall
-                n_relevant = len(set(recs) & set(true_books))
-                
-                precision = n_relevant / k if k > 0 else 0
-                recall = n_relevant / len(true_books) if len(true_books) > 0 else 0
-                
-                precisions.append(precision)
-                recalls.append(recall)
-            
-            # Average precision and recall and convert to regular Python float
-            if precisions:
-                results['hybrid'][f'precision@{k}'] = float(np.mean(precisions))
-                results['hybrid'][f'recall@{k}'] = float(np.mean(recalls))
-        
-        return results
-    
     def save(self, model_dir: str = 'models', model_name: str = None) -> bool:
         """
         Save the hybrid model.
@@ -398,7 +342,8 @@ if __name__ == "__main__":
         if args.eval:
             # Evaluate the model
             logger.info("Evaluating hybrid recommender model")
-            results = evaluate_model_with_test_data(recommender)
+            from .train_model_evaluate import run_evaluation
+            results = run_evaluation(recommender, strategies=['hybrid'])
             logger.info(f"Evaluation results: {results}")
             
         logger.info("Done!")

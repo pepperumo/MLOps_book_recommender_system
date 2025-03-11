@@ -6,16 +6,20 @@ This module implements a recommender system based on collaborative filtering.
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse import load_npz, save_npz
 from sklearn.neighbors import NearestNeighbors
-import logging
-import os
 import pickle
-from typing import List, Dict, Tuple, Optional, Union, Any
-from datetime import datetime
+import os
+import json
+import logging
+import traceback
 import argparse
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Union, Any
 
-from .train_model_base import BaseRecommender, load_data, evaluate_model_with_test_data
+from .train_model_base import BaseRecommender, load_data
 
+# Use the existing logger
 logger = logging.getLogger('train_model')
 
 
@@ -181,91 +185,33 @@ class CollaborativeRecommender(BaseRecommender):
         list
             List of recommended book IDs
         """
-        if self.item_nn_model is None:
-            logger.error("Cannot find similar books: model not trained")
-            return []
-            
         try:
-            # Get matrix index for the book ID
+            # Check if book is in our dataset
             if book_id not in self.book_id_to_index:
-                logger.warning(f"Book {book_id} not found in training data")
+                logger.warning(f"Book ID {book_id} not found in collaborative filtering model")
                 return []
                 
             book_idx = self.book_id_to_index[book_id]
             
-            # Find nearest neighbors to this book
-            distances, indices = self.item_nn_model.kneighbors(
-                self.user_item_matrix.T[book_idx].toarray().reshape(1, -1),
-                n_neighbors=n + 1
+            # Get similar books based on item-item similarity
+            if self.item_nn_model is None:
+                logger.warning("Item nearest neighbors model not available")
+                return []
+                
+            _, indices = self.item_nn_model.kneighbors(
+                self.user_item_matrix.T[book_idx].reshape(1, -1),
+                n_neighbors=n+1  # +1 because the book itself will be included
             )
             
-            # Skip the first result (it's the book itself)
-            similar_indices = indices.flatten()[1:n+1]
-            
-            # Convert to book IDs
-            similar_book_ids = [int(self.book_ids[i]) for i in similar_indices]
+            # Convert indices to book IDs, excluding the query book itself
+            similar_indices = indices[0][1:n+1]  # Skip the first one (the book itself)
+            similar_book_ids = [int(self.book_ids[idx]) for idx in similar_indices]
             
             return similar_book_ids
             
         except Exception as e:
             logger.error(f"Error finding similar books for book {book_id}: {e}")
             return []
-    
-    def evaluate(self, test_df, k_values, strategies):
-        """
-        Evaluate the collaborative filtering model using precision@k and recall@k.
-        
-        Parameters
-        ----------
-        test_df : pandas.DataFrame
-            Test data with user_id and book_id columns
-        k_values : list
-            List of k values to evaluate
-        strategies : list
-            List of strategies to evaluate
-            
-        Returns
-        -------
-        dict
-            Evaluation results
-        """
-        # We only support collaborative filtering strategy
-        if 'collaborative' not in strategies:
-            return {}
-            
-        results = {'collaborative': {}}
-        
-        # Group test data by user
-        test_users = test_df.groupby('user_id')['book_id'].apply(list).to_dict()
-        
-        # Calculate precision and recall for each k value
-        for k in k_values:
-            precisions = []
-            recalls = []
-            
-            for user_id, true_books in test_users.items():
-                # Skip users not in training data
-                if user_id not in self.user_ids:
-                    continue
-                    
-                # Get recommendations for this user
-                recs = self.recommend_for_user(user_id, n_recommendations=k)
-                
-                # Calculate precision and recall
-                n_relevant = len(set(recs) & set(true_books))
-                
-                precision = n_relevant / k if k > 0 else 0
-                recall = n_relevant / len(true_books) if len(true_books) > 0 else 0
-                
-                precisions.append(precision)
-                recalls.append(recall)
-            
-            # Average precision and recall and convert to regular Python float
-            if precisions:
-                results['collaborative'][f'precision@{k}'] = float(np.mean(precisions))
-                results['collaborative'][f'recall@{k}'] = float(np.mean(recalls))
-        
-        return results
 
 
 def train_model():
@@ -322,8 +268,9 @@ if __name__ == "__main__":
             
         if args.eval:
             # Evaluate the model
-            logger.info("Evaluating collaborative filtering model")
-            results = evaluate_model_with_test_data(recommender)
+            logger.info("Evaluating collaborative recommender model")
+            from .train_model_evaluate import run_evaluation
+            results = run_evaluation(recommender, strategies=['collaborative'])
             logger.info(f"Evaluation results: {results}")
             
         logger.info("Done!")

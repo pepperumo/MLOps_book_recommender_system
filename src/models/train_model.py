@@ -31,10 +31,11 @@ logging.basicConfig(
 logger = logging.getLogger('train_model')
 
 # Import the recommender implementations
-from .train_model_base import load_data, evaluate_model_with_test_data
+from .train_model_base import load_data
 from .train_model_collaborative import CollaborativeRecommender, train_model as train_collaborative
 from .train_model_content import ContentBasedRecommender, train_model as train_content
 from .train_model_hybrid import HybridRecommender, train_model as train_hybrid
+from .train_model_evaluate import run_evaluation
 
 
 def train_selected_model(model_type='hybrid', collaborative_weight=0.7, eval_model=True):
@@ -52,39 +53,43 @@ def train_selected_model(model_type='hybrid', collaborative_weight=0.7, eval_mod
         
     Returns
     -------
-    BaseRecommender
-        Trained recommender model
+    tuple
+        (model, evaluation_results)
     """
+    model = None
+    evaluation_results = {}
+    
     try:
         logger.info(f"Training {model_type} recommender model")
         
-        # Train the selected model type
         if model_type == 'collaborative':
-            recommender = train_collaborative()
+            model = train_collaborative()
         elif model_type == 'content':
-            recommender = train_content()
+            model = train_content()
         elif model_type == 'hybrid':
-            recommender = train_hybrid(collaborative_weight)
+            model = train_hybrid(collaborative_weight=collaborative_weight)
         else:
             logger.error(f"Unknown model type: {model_type}")
-            return None
+            return None, {}
             
-        if recommender is None:
-            logger.error(f"Failed to train {model_type} recommender model")
-            return None
+        if model is None:
+            logger.error(f"Failed to train {model_type} model")
+            return None, {}
             
-        if eval_model:
-            # Evaluate the model
+        # Evaluate the model if requested
+        if eval_model and model is not None:
             logger.info(f"Evaluating {model_type} recommender model")
-            results = evaluate_model_with_test_data(recommender)
-            logger.info(f"Evaluation results: {results}")
+            evaluation_results = run_evaluation(
+                recommender=model,
+                strategies=[model_type]
+            )
             
-        return recommender
+        return model, evaluation_results
         
     except Exception as e:
-        logger.error(f"Error training model: {e}")
+        logger.error(f"Error training {model_type} model: {e}")
         logger.debug(traceback.format_exc())
-        return None
+        return None, {}
 
 
 if __name__ == "__main__":
@@ -122,13 +127,13 @@ if __name__ == "__main__":
         os.makedirs(args.model_dir, exist_ok=True)
         
         # Train the selected model
-        recommender = train_selected_model(
+        model, evaluation_results = train_selected_model(
             model_type=args.model_type,
             collaborative_weight=args.collaborative_weight,
             eval_model=args.eval
         )
         
-        if recommender is None:
+        if model is None:
             logger.error("Model training failed")
             sys.exit(1)
             

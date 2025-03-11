@@ -11,6 +11,13 @@ services:
       - recommender-network
     environment:
       - PYTHONUNBUFFERED=1
+    command: ["keep-alive"]  # Keep container running
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /app/data/ingestion_complete || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   model-training:
     build:
@@ -22,9 +29,17 @@ services:
     networks:
       - recommender-network
     depends_on:
-      - data-ingestion
+      data-ingestion:
+        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
+    command: ["keep-alive"]  # Keep container running
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /app/models/training_complete || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   prediction-api:
     build:
@@ -38,7 +53,8 @@ services:
     networks:
       - recommender-network
     depends_on:
-      - model-training
+      model-training:
+        condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
 

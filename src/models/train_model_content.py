@@ -1,22 +1,25 @@
 """
 Content-based filtering implementation for book recommender system.
 
-This module implements a recommender system based on content features of books.
+This module implements a recommender system based on content features.
 """
 import pandas as pd
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse import load_npz, save_npz
 from sklearn.metrics.pairwise import cosine_similarity
-import logging
+import pickle
 import os
-import sys
+import json
+import logging
 import traceback
-from typing import List, Dict, Tuple, Optional, Union, Any
-from datetime import datetime
 import argparse
+from datetime import datetime
+from typing import Dict, List, Tuple, Optional, Union, Any
 
-from .train_model_base import BaseRecommender, load_data, evaluate_model_with_test_data
+from .train_model_base import BaseRecommender, load_data
 
+# Use the existing logger
 logger = logging.getLogger('train_model')
 
 
@@ -180,94 +183,32 @@ class ContentBasedRecommender(BaseRecommender):
         list
             List of recommended book IDs
         """
-        if self.book_similarity_matrix is None:
-            logger.error("Cannot find similar books: model not trained")
-            return []
-            
         try:
-            # Get matrix index for the book ID
+            # Check if book is in our dataset
             if book_id not in self.book_id_to_index:
-                logger.warning(f"Book {book_id} not found in training data")
+                logger.warning(f"Book ID {book_id} not found in content-based model")
                 return []
                 
+            # Get the matrix index for this book ID
             book_idx = self.book_id_to_index[book_id]
             
+            # Get similar books from precomputed similarity matrix
+            if self.book_similarity_matrix is None:
+                logger.warning("Book similarity matrix not available")
+                return []
+                
             # Get similarity scores for this book
-            similarity_scores = self.book_similarity_matrix[book_idx]
+            similarities = self.book_similarity_matrix[book_idx]
             
-            # Get indices of most similar books
-            # We need to handle both numpy arrays and sparse matrices
-            if isinstance(similarity_scores, np.ndarray):
-                similar_indices = np.argsort(similarity_scores)[::-1][1:n+1]
-            else:
-                # Convert to array if it's a sparse matrix
-                scores_array = similarity_scores.toarray().flatten()
-                similar_indices = np.argsort(scores_array)[::-1][1:n+1]
-            
-            # Convert to book IDs
-            similar_book_ids = [int(self.book_ids[i]) for i in similar_indices]
+            # Get top similar books (excluding the book itself)
+            similar_indices = np.argsort(similarities)[::-1][1:n+1]
+            similar_book_ids = [int(self.book_ids[idx]) for idx in similar_indices]
             
             return similar_book_ids
             
         except Exception as e:
             logger.error(f"Error finding similar books for book {book_id}: {e}")
             return []
-    
-    def evaluate(self, test_df, k_values, strategies):
-        """
-        Evaluate the content-based filtering model using precision@k and recall@k.
-        
-        Parameters
-        ----------
-        test_df : pandas.DataFrame
-            Test data with user_id and book_id columns
-        k_values : list
-            List of k values to evaluate
-        strategies : list
-            List of strategies to evaluate
-            
-        Returns
-        -------
-        dict
-            Evaluation results
-        """
-        # We only support content-based filtering strategy
-        if 'content' not in strategies:
-            return {}
-            
-        results = {'content': {}}
-        
-        # Group test data by user
-        test_users = test_df.groupby('user_id')['book_id'].apply(list).to_dict()
-        
-        # Calculate precision and recall for each k value
-        for k in k_values:
-            precisions = []
-            recalls = []
-            
-            for user_id, true_books in test_users.items():
-                # Skip users not in training data
-                if user_id not in self.user_ids:
-                    continue
-                    
-                # Get recommendations for this user
-                recs = self.recommend_for_user(user_id, n_recommendations=k)
-                
-                # Calculate precision and recall
-                n_relevant = len(set(recs) & set(true_books))
-                
-                precision = n_relevant / k if k > 0 else 0
-                recall = n_relevant / len(true_books) if len(true_books) > 0 else 0
-                
-                precisions.append(precision)
-                recalls.append(recall)
-            
-            # Average precision and recall and convert to regular Python float
-            if precisions:
-                results['content'][f'precision@{k}'] = float(np.mean(precisions))
-                results['content'][f'recall@{k}'] = float(np.mean(recalls))
-        
-        return results
 
 
 def train_model():
@@ -327,8 +268,9 @@ if __name__ == "__main__":
             
         if args.eval:
             # Evaluate the model
-            logger.info("Evaluating content-based filtering model")
-            results = evaluate_model_with_test_data(recommender)
+            logger.info("Evaluating content-based recommender model")
+            from .train_model_evaluate import run_evaluation
+            results = run_evaluation(recommender, strategies=['content'])
             logger.info(f"Evaluation results: {results}")
             
         logger.info("Done!")

@@ -16,6 +16,10 @@ python -m src.features.build_features
 
 echo "Data ingestion completed successfully."
 
+# Create a health check file to signal completion
+touch /app/data/ingestion_complete
+echo "Created health check file to signal completion"
+
 # Keep container running if requested
 if [ "$1" = "keep-alive" ]; then
     echo "Container will remain running for debugging purposes."
