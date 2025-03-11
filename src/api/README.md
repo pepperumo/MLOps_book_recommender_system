@@ -367,6 +367,105 @@ When reporting issues, please include:
 3. Steps to reproduce the issue
 4. Your operating system and Docker version
 
+## Using DVC for Model and Data Files
+
+This project uses Data Version Control (DVC) to manage large model and data files separately from Git. This allows us to version these files without bloating the Git repository.
+
+### For Developers
+
+#### Prerequisites
+1. **Activate the virtual environment first!**
+   ```bash
+   # On Windows
+   .\venv\Scripts\activate
+
+   # On Unix/Mac
+   source venv/bin/activate
+   ```
+
+2. **Install DVC and dependencies**
+   ```bash
+   # Make sure you're in an activated virtual environment
+   pip install -r requirements.txt
+   ```
+
+#### Working with DVC
+
+1. **Pull the model and data files** (after cloning the repository)
+   ```bash
+   # IMPORTANT: Activate your virtual environment first!
+   .\venv\Scripts\activate  # Windows
+   
+   # Then pull the files
+   dvc pull
+   ```
+
+2. **Add new or updated model files**
+   ```bash
+   # IMPORTANT: Activate your virtual environment first!
+   .\venv\Scripts\activate  # Windows
+   
+   # Add files to DVC
+   dvc add models/new_model_file.npz
+   
+   # Commit the .dvc file to Git
+   git add models.dvc
+   git commit -m "Add new model file"
+   
+   # Push to DVC storage
+   dvc push
+   ```
+
+3. **Update existing tracked files**
+   ```bash
+   # After changing files that are already tracked by DVC
+   # IMPORTANT: Activate your virtual environment first!
+   .\venv\Scripts\activate  # Windows
+   
+   # Commit the changes
+   dvc commit
+   
+   # Push to DVC storage
+   dvc push
+   ```
+
+### For Testers
+
+If you're testing this application, you'll need to get the model files from DVC:
+
+1. **Clone the repository and create a virtual environment**
+   ```bash
+   git clone https://github.com/yourusername/MLOps_book_recommender_system.git
+   cd MLOps_book_recommender_system
+   
+   # Create a virtual environment
+   python -m venv venv
+   
+   # IMPORTANT: Activate the virtual environment
+   .\venv\Scripts\activate  # Windows
+   source venv/bin/activate  # Unix/Mac
+   ```
+
+2. **Install dependencies**
+   ```bash
+   # Make sure you're in an activated virtual environment
+   pip install -r requirements.txt
+   ```
+
+3. **Pull the model and data files**
+   ```bash
+   # IMPORTANT: Ensure your virtual environment is activated
+   dvc pull
+   ```
+
+4. **Run the API using Docker** (follow instructions in the "Running with Docker" section)
+
+### Troubleshooting DVC
+
+- **Files not downloading**: Make sure you have activated your virtual environment before running any DVC commands
+- **Access issues**: The DVC storage is local by default, so you need to have access to the local storage directory
+- **Missing models**: Run `dvc status` to check which files are missing and then `dvc pull` to download them
+
 ## Data Requirements
 
 To test the book recommender system, you'll need the following model files in the correct locations:

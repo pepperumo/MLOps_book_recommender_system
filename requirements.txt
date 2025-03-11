@@ -2,6 +2,8 @@ bleach==6.2.0
 certifi==2025.1.31
 charset-normalizer==3.4.1
 colorama==0.4.6
+dvc>=3.0.0
+dvc-gdrive>=3.0.0
 fastjsonschema==2.21.1
 idna==3.10
 kaggle==1.6.17
