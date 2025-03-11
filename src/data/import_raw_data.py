@@ -1,40 +1,36 @@
-import requests
 import os
 import logging
+import shutil
+import kagglehub
 from check_structure import check_existing_file, check_existing_folder
 
 
-def import_raw_data(raw_data_relative_path, 
-                    filenames,
-                    bucket_folder_url):
-    '''import filenames from bucket_folder_url in raw_data_relative_path'''
+def import_raw_data(raw_data_relative_path, dataset_name):
+    '''Import dataset from Kaggle using kagglehub into raw_data_relative_path'''
     if check_existing_folder(raw_data_relative_path):
         os.makedirs(raw_data_relative_path)
-    # download all the files
-    for filename in filenames :
-        input_file = os.path.join(bucket_folder_url,filename)
-        output_file = os.path.join(raw_data_relative_path, filename)
-        if check_existing_file(output_file):
-            object_url = input_file
-            print(f'downloading {input_file} as {os.path.basename(output_file)}')
-            response = requests.get(object_url)
-            if response.status_code == 200:
-                # Process the response content as needed
-                content = response.text
-                text_file = open(output_file, "wb")
-                text_file.write(content.encode('utf-8'))
-                text_file.close()
-            else:
-                print(f'Error accessing the object {input_file}:', response.status_code)
+    
+    # Download the dataset using kagglehub
+    print(f'Downloading dataset: {dataset_name}')
+    dataset_path = kagglehub.dataset_download(dataset_name)
+    print(f'Dataset downloaded to: {dataset_path}')
+    
+    # Copy all files from the downloaded path to the raw data directory
+    for filename in os.listdir(dataset_path):
+        source_file = os.path.join(dataset_path, filename)
+        destination_file = os.path.join(raw_data_relative_path, filename)
+        
+        if os.path.isfile(source_file) and check_existing_file(destination_file):
+            print(f'Copying {filename} to {destination_file}')
+            shutil.copy2(source_file, destination_file)
+    
+    print(f'All files copied to {raw_data_relative_path}')
                 
 def main(raw_data_relative_path="./data/raw", 
-        filenames = ["genome-scores.csv", "genome-tags.csv", "links.csv", 
-                    "movies.csv", "ratings.csv", "README.txt", "tags.csv"],
-        bucket_folder_url= "https://mlops-project-db.s3.eu-west-1.amazonaws.com/movie_recommandation/"          
-        ):
-    """ Upload data from AWS s3 in ./data/raw
+        dataset_name="zygmunt/goodbooks-10k"):
+    """ Download data from Kaggle using kagglehub into ./data/raw
     """
-    import_raw_data(raw_data_relative_path, filenames, bucket_folder_url)
+    import_raw_data(raw_data_relative_path, dataset_name)
     logger = logging.getLogger(__name__)
     logger.info('making raw data set')
 
