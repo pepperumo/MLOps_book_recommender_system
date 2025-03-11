@@ -1,10 +1,7 @@
 [core]
-    remote = localremote
-['remote "myremote"']
-    url = gdrive://1_f8PZtXPjHw3YeYjzEwbG3UdSEwBT40u
+    remote = origin
 ['remote "localremote"']
     url = ../dvc-storage
-['remote "dagshubremote"']
-    url = https://dagshub.com/pepperumo/MLOps_book_recommender_system.dvc
 ['remote "origin"']
-    url = https://dagshub.com/pepperumo/MLOps_book_recommender_system.dvc
+    url = s3://dvc
+    endpointurl = https://dagshub.com/pepperumo/MLOps_book_recommender_system.s3
