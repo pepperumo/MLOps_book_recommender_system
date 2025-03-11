@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  data-ingestion:
+    build:
+      context: .
+      dockerfile: docker/data-ingestion/Dockerfile
+    volumes:
+      - ./data:/app/data
+    networks:
+      - recommender-network
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  model-training:
+    build:
+      context: .
+      dockerfile: docker/model-training/Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    networks:
+      - recommender-network
+    depends_on:
+      - data-ingestion
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  prediction-api:
+    build:
+      context: .
+      dockerfile: docker/prediction-api/Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    ports:
+      - "8000:8000"
+    networks:
+      - recommender-network
+    depends_on:
+      - model-training
+    environment:
+      - PYTHONUNBUFFERED=1
+
+networks:
+  recommender-network:
+    driver: bridge
