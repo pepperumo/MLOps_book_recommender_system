@@ -90,3 +90,6 @@ target/
 .mypy_cache/
 /models
 /data
+
+# DVC storage
+dvc-storage/
