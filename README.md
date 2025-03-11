@@ -90,4 +90,41 @@ Convention : All python scripts must be run from the root specifying the relativ
 
 ### Note that we have 10 recommandations per user
 
+## Using Data Version Control (DVC)
+
+This project uses DVC to manage large model and data files separately from Git.
+
+### Setting up DVC
+
+1. **Make sure your virtual environment is activated**
+   ```bash
+   ./my_env/Scripts/activate
+   ```
+
+2. **Pull model and data files** (after cloning the repository)
+   ```bash
+   # Make sure your virtual environment is activated
+   dvc pull
+   ```
+
+3. **After training new models** (if you modify any models)
+   ```bash
+   # Make sure your virtual environment is activated
+   dvc add models
+   git add models.dvc
+   git commit -m "Update model files"
+   dvc push
+   ```
+
+4. **After adding or modifying data** (if you add new datasets)
+   ```bash
+   # Make sure your virtual environment is activated
+   dvc add data
+   git add data.dvc
+   git commit -m "Update data files"
+   dvc push
+   ```
+
+For more detailed DVC instructions, please see the [API README](./src/api/README.md#using-dvc-for-model-and-data-files).
+
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>

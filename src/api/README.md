@@ -393,17 +393,13 @@ This project uses Data Version Control (DVC) to manage large model and data file
 
 1. **Pull the model and data files** (after cloning the repository)
    ```bash
-   # IMPORTANT: Activate your virtual environment first!
-   .\venv\Scripts\activate  # Windows
-   
-   # Then pull the files
+   # Make sure your virtual environment is activated
    dvc pull
    ```
 
 2. **Add new or updated model files**
    ```bash
-   # IMPORTANT: Activate your virtual environment first!
-   .\venv\Scripts\activate  # Windows
+   # Make sure your virtual environment is activated
    
    # Add files to DVC
    dvc add models/new_model_file.npz
@@ -419,8 +415,7 @@ This project uses Data Version Control (DVC) to manage large model and data file
 3. **Update existing tracked files**
    ```bash
    # After changing files that are already tracked by DVC
-   # IMPORTANT: Activate your virtual environment first!
-   .\venv\Scripts\activate  # Windows
+   # Make sure your virtual environment is activated
    
    # Commit the changes
    dvc commit
@@ -441,7 +436,7 @@ If you're testing this application, you'll need to get the model files from DVC:
    # Create a virtual environment
    python -m venv venv
    
-   # IMPORTANT: Activate the virtual environment
+   # Activate the virtual environment
    .\venv\Scripts\activate  # Windows
    source venv/bin/activate  # Unix/Mac
    ```
@@ -454,15 +449,17 @@ If you're testing this application, you'll need to get the model files from DVC:
 
 3. **Pull the model and data files**
    ```bash
-   # IMPORTANT: Ensure your virtual environment is activated
+   # Make sure your virtual environment is activated
    dvc pull
    ```
+
+   > Note: The DVC storage is currently configured locally. If you don't have access to the local storage, you may need to get the model files directly from the project maintainer.
 
 4. **Run the API using Docker** (follow instructions in the "Running with Docker" section)
 
 ### Troubleshooting DVC
 
-- **Files not downloading**: Make sure you have activated your virtual environment before running any DVC commands
+- **Files not downloading**: Make sure your virtual environment is activated
 - **Access issues**: The DVC storage is local by default, so you need to have access to the local storage directory
 - **Missing models**: Run `dvc status` to check which files are missing and then `dvc pull` to download them
 
