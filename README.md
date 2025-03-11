@@ -125,6 +125,6 @@ This project uses DVC to manage large model and data files separately from Git.
    dvc push
    ```
 
-For more detailed DVC instructions, please see the [API README](./src/api/README.md#using-dvc-for-model-and-data-files).
+For more detailed DVC instructions, please refer to the DVC documentation at https://dvc.org/doc.
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
