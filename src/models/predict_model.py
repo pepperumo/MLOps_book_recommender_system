@@ -29,12 +29,16 @@ logger = logging.getLogger('predict_model')
 try:
     from src.models.train_model import load_data, BookRecommender
 except ImportError:
-    logger.error("Could not import from src.models.train_model. Using relative import.")
     try:
-        from train_model import load_data, BookRecommender
+        from models.train_model import load_data, BookRecommender
     except ImportError:
-        logger.critical("Failed to import required functions from train_model. This is required for the model to work.")
-        raise
+        import sys
+        import os
+        # Add the parent directory to the path to ensure we can import the module
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        sys.path.append(parent_dir)
+        from models.train_model import load_data, BookRecommender
+        logger.error("Could not import from src.models.train_model. Using relative import.")
 
 def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFrame:
     """
