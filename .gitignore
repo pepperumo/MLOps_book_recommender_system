@@ -93,3 +93,6 @@ target/
 
 # DVC storage
 dvc-storage/
+
+# DVC backup files
+.dvc/*.backup
