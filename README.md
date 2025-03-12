@@ -176,3 +176,18 @@ You can access the API at http://localhost:8000 once it's running.
 The system uses a custom unpickler to ensure model compatibility between different environments. This resolves class definition differences when loading models in Docker containers.
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+
+## Graphical Pipeline
+
+Below is the **graphical representation** of the MLOps pipeline:
+
+```mermaid
+graph TD;
+    A[Data Ingestion] -->|retrieve_raw_data.py| B[Data Processing];
+    B -->|process_data.py| C[Feature Engineering];
+    C -->|build_features.py| D[Model Training];
+    D -->|train_model.py| E[Model Evaluation];
+    E -->|evaluate_model.py| F[Model Deployment];
+    F -->|FastAPI (api.py)| G[Model Inference];
+    G -->|predict_model.py| H[Client Requests];
+    F -->|Monitor & Improve| I[Future Enhancements];
