@@ -131,42 +131,16 @@ To test the entire pipeline with a single command, you can use the provided Powe
 
     `.\test_collaborative_model.ps1`
 
-## Using Data Version Control (DVC)
+## Data Management
 
-This project uses DVC to manage large model and data files separately from Git.
+This project manages book and user rating data through a structured pipeline:
 
-### Setting up DVC
+1. **Data Retrieval**: Raw data is fetched from the external API
+2. **Data Processing**: Raw data is cleaned and processed using `process_data.py`
+3. **Feature Building**: Processed data is converted into feature matrices for modeling
+4. **Model Training**: Features are used to train the collaborative filtering model
 
-1. **Make sure your virtual environment is activated**
-   ```bash
-   ./venv/Scripts/activate
-   ```
-
-2. **Pull model and data files** (after cloning the repository)
-   ```bash
-   # Make sure your virtual environment is activated
-   dvc pull
-   ```
-
-3. **After training new models** (if you modify any models)
-   ```bash
-   # Make sure your virtual environment is activated
-   dvc add models
-   git add models.dvc
-   git commit -m "Update model files"
-   dvc push
-   ```
-
-4. **After adding or modifying data** (if you add new datasets)
-   ```bash
-   # Make sure your virtual environment is activated
-   dvc add data
-   git add data.dvc
-   git commit -m "Update data files"
-   dvc push
-   ```
-
-For more detailed DVC instructions, please refer to the DVC documentation at https://dvc.org/doc.
+All data is organized according to the project structure, with separate directories for raw, processed, and feature data.
 
 ## Docker Deployment
 
