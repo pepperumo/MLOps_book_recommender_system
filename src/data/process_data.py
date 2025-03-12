@@ -15,7 +15,7 @@ from datetime import datetime
 log_dir = os.path.join('logs')
 os.makedirs(log_dir, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = os.path.join(log_dir, f'make_dataset_{timestamp}.log')
+log_filename = os.path.join(log_dir, f'process_data_{timestamp}.log')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,7 +25,7 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger('make_dataset')
+logger = logging.getLogger('process_data')
 
 def load_book_data(file_path: str) -> Optional[pd.DataFrame]:
     """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Book Recommendation API using FastAPI."""
+"""Book Recommendation API using FastAPI with Collaborative Filtering."""
 
 import os
 import sys
@@ -18,10 +18,8 @@ sys.path.insert(0, os.path.join(project_root, "src"))
 sys.path.insert(0, os.path.join(project_root, "src", "models"))
 
 # Import the necessary modules
-from src.models import train_model_base
-from src.models import train_model_collaborative
-from src.models import train_model_content
-from src.models import train_model_hybrid
+from src.models.model_utils import BaseRecommender, load_data
+from src.models.train_model import CollaborativeRecommender
 
 # Import recommender modules
 try:
@@ -76,7 +74,7 @@ logger = logging.getLogger('recommendation_api')
 # Create FastAPI app
 app = FastAPI(
     title="Book Recommender API",
-    description="API for book recommendations using collaborative filtering, content-based filtering, and hybrid approaches",
+    description="API for book recommendations using collaborative filtering",
     version="1.0.0"
 )
 
@@ -94,12 +92,11 @@ class RecommendationResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     logger.info("Checking model availability...")
-    for model_type in ['collaborative', 'content', 'hybrid']:
-        model = load_recommender_model(model_type, model_dir=os.path.join(project_root, "models"))
-        if model is None:
-            logger.warning(f"{model_type.capitalize()} model not available")
-        else:
-            logger.info(f"{model_type.capitalize()} model loaded successfully")
+    model = load_recommender_model('collaborative', model_dir=os.path.join(project_root, "models"))
+    if model is None:
+        logger.warning("Collaborative model not available")
+    else:
+        logger.info("Collaborative model loaded successfully")
 
 # Root endpoint
 @app.get("/")
@@ -125,7 +122,7 @@ async def health_check():
 @app.get("/recommend/user/{user_id}", response_model=RecommendationResponse)
 async def get_user_recommendations(
     user_id: int, 
-    model_type: str = Query("hybrid", enum=["collaborative", "content", "hybrid"]),
+    model_type: str = Query("collaborative", enum=["collaborative"]),
     num_recommendations: int = Query(5, ge=1, le=20),
     n: Optional[int] = Query(None, ge=1, le=20)
 ):
@@ -134,32 +131,25 @@ async def get_user_recommendations(
     if user_id < 1 or user_id > 500:
         raise HTTPException(status_code=404, detail=f"User ID {user_id} not found")
         
-    logger.info(f"Generating recommendations for user {user_id} using {model_type} model")
+    logger.info(f"Generating recommendations for user {user_id} using collaborative model")
     
     # Use 'n' parameter if provided, otherwise use num_recommendations
     if n is not None:
         num_recommendations = n
     
     try:
-        # Validate model_type parameter
-        if model_type not in ["collaborative", "content", "hybrid"]:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid model_type: {model_type}. Must be one of: collaborative, content, hybrid"
-            )
-        
         recommendations_df = recommend_for_user(
             user_id=user_id,
-            model_type=model_type,
+            model_type='collaborative',  # Always use collaborative model
             num_recommendations=num_recommendations,
             data_dir=os.path.join(project_root, 'data')
         )
         
         if recommendations_df.empty:
-            logger.warning(f"No recommendations found for user {user_id} using {model_type} model")
+            logger.warning(f"No recommendations found for user {user_id}")
             raise HTTPException(
                 status_code=404, 
-                detail=f"No recommendations found for user {user_id} using {model_type} model. Please check if the user exists in the training data."
+                detail=f"No recommendations found for user {user_id}. Please check if the user exists in the training data."
             )
         
         recommendations = []
@@ -192,47 +182,35 @@ async def get_user_recommendations(
 @app.get("/similar-books/{book_id}", response_model=RecommendationResponse)
 async def get_similar_books(
     book_id: int,
-    model_type: str = Query("content", enum=["collaborative", "content", "hybrid"]),
+    model_type: str = Query("collaborative", enum=["collaborative"]),
     num_recommendations: int = Query(5, ge=1, le=20),
     n: Optional[int] = Query(None, ge=1, le=20)
 ):
+    """Get similar books to a given book using collaborative filtering"""
     # Check for valid book ID range (assuming we have books 1-10000 for example)
     if book_id < 1 or book_id > 10000:
         raise HTTPException(status_code=404, detail=f"Book ID {book_id} not found")
         
-    logger.info(f"Finding similar books to book {book_id} using {model_type} model")
+    logger.info(f"Finding similar books to book {book_id} using collaborative model")
     
     # Use 'n' parameter if provided, otherwise use num_recommendations
     if n is not None:
         num_recommendations = n
     
     try:
-        # Validate model_type parameter
-        if model_type not in ["collaborative", "content", "hybrid"]:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid model_type parameter. Must be one of: collaborative, content, hybrid"
-            )
-            
         similar_books_df = recommend_similar_books(
             book_id=book_id,
-            model_type=model_type,
+            model_type='collaborative',  # Always use collaborative model
             num_recommendations=num_recommendations,
             data_dir=os.path.join(project_root, 'data')
         )
         
         if similar_books_df.empty:
-            logger.warning(f"No similar books found for book {book_id} using {model_type} model")
+            logger.warning(f"No similar books found for book {book_id}")
             raise HTTPException(
                 status_code=404, 
-                detail=f"No similar books found for book {book_id} using {model_type} model. Please check if the book exists in the training data."
+                detail=f"No similar books found for book {book_id}. Please check if the book exists in the training data."
             )
-        
-        # Filter out the source book (which has rank -1 or matches the original book_id)
-        similar_books_df = similar_books_df[
-            (similar_books_df['rank'] >= 0) & 
-            (similar_books_df['book_id'] != book_id)
-        ]
         
         recommendations = []
         for _, row in similar_books_df.iterrows():
@@ -259,6 +237,7 @@ async def get_similar_books(
     except Exception as e:
         logger.error(f"Error finding similar books: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
