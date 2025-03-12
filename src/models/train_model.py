@@ -14,6 +14,11 @@ import traceback
 from datetime import datetime
 import argparse
 
+# Add the project root to the Python path so we can import modules correctly
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 # Set up logging
 log_dir = os.path.join('logs')
 os.makedirs(log_dir, exist_ok=True)
@@ -31,11 +36,11 @@ logging.basicConfig(
 logger = logging.getLogger('train_model')
 
 # Import the recommender implementations
-from .train_model_base import load_data
-from .train_model_collaborative import CollaborativeRecommender, train_model as train_collaborative
-from .train_model_content import ContentBasedRecommender, train_model as train_content
-from .train_model_hybrid import HybridRecommender, train_model as train_hybrid
-from .train_model_evaluate import run_evaluation
+from src.models.train_model_base import load_data
+from src.models.train_model_collaborative import CollaborativeRecommender, train_model as train_collaborative
+from src.models.train_model_content import ContentBasedRecommender, train_model as train_content
+from src.models.train_model_hybrid import HybridRecommender, train_model as train_hybrid
+from src.models.train_model_evaluate import run_evaluation
 
 
 def train_selected_model(model_type='hybrid', collaborative_weight=0.7, eval_model=True):
@@ -113,6 +118,7 @@ if __name__ == "__main__":
         parser.add_argument(
             '--eval', 
             action='store_true',
+            default=True,  
             help='Evaluate the model after training'
         )
         parser.add_argument(
@@ -126,19 +132,47 @@ if __name__ == "__main__":
         # Ensure model directory exists
         os.makedirs(args.model_dir, exist_ok=True)
         
-        # Train the selected model
-        model, evaluation_results = train_selected_model(
-            model_type=args.model_type,
-            collaborative_weight=args.collaborative_weight,
-            eval_model=args.eval
-        )
-        
-        if model is None:
-            logger.error("Model training failed")
-            sys.exit(1)
+        # If no arguments were provided, run all three model types
+        if len(sys.argv) == 1:
+            logger.info("No arguments provided, running all three model types with evaluation")
             
-        logger.info("Model training completed successfully")
-        
+            # Train collaborative model
+            logger.info("Training collaborative filtering model...")
+            model, evaluation_results = train_selected_model(
+                model_type='collaborative',
+                eval_model=True
+            )
+            
+            # Train content-based model
+            logger.info("Training content-based filtering model...")
+            model, evaluation_results = train_selected_model(
+                model_type='content',
+                eval_model=True
+            )
+            
+            # Train hybrid model
+            logger.info("Training hybrid model...")
+            model, evaluation_results = train_selected_model(
+                model_type='hybrid',
+                collaborative_weight=0.7,
+                eval_model=True
+            )
+            
+            logger.info("All models trained and evaluated successfully")
+        else:
+            # Train the selected model
+            model, evaluation_results = train_selected_model(
+                model_type=args.model_type,
+                collaborative_weight=args.collaborative_weight,
+                eval_model=args.eval
+            )
+            
+            if model is None:
+                logger.error("Model training failed")
+                sys.exit(1)
+                
+            logger.info("Model training completed successfully")
+            
     except Exception as e:
         logger.error(f"Error: {e}")
         logger.debug(traceback.format_exc())

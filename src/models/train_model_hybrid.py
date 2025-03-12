@@ -16,9 +16,13 @@ from datetime import datetime
 import argparse
 import pickle
 
-from .train_model_base import BaseRecommender, load_data
-from .train_model_collaborative import CollaborativeRecommender
-from .train_model_content import ContentBasedRecommender
+# Fix imports - change relative to absolute
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.models.train_model_base import BaseRecommender, load_data
+from src.models.train_model_collaborative import CollaborativeRecommender
+from src.models.train_model_content import ContentBasedRecommender
 
 logger = logging.getLogger('train_model')
 
@@ -293,13 +297,13 @@ def train_model(collaborative_weight: float = 0.7):
         # If we couldn't load the collaborative recommender, train it
         if collaborative_recommender is None:
             logger.info("Training new collaborative recommender")
-            from .train_model_collaborative import train_model as train_collab
+            from src.models.train_model_collaborative import train_model as train_collab
             collaborative_recommender = train_collab()
             
         # If we couldn't load the content-based recommender, train it
         if content_based_recommender is None:
             logger.info("Training new content-based recommender")
-            from .train_model_content import train_model as train_content
+            from src.models.train_model_content import train_model as train_content
             content_based_recommender = train_content()
         
         # Create and train hybrid recommender
@@ -342,7 +346,7 @@ if __name__ == "__main__":
         if args.eval:
             # Evaluate the model
             logger.info("Evaluating hybrid recommender model")
-            from .train_model_evaluate import run_evaluation
+            from src.models.train_model_evaluate import run_evaluation
             results = run_evaluation(recommender, strategies=['hybrid'])
             logger.info(f"Evaluation results: {results}")
             

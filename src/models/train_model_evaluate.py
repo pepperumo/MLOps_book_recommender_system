@@ -10,13 +10,18 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+# Fix imports - add absolute path
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.models.train_model_base import BaseRecommender
+
 # Set up logging
 logger = logging.getLogger('train_model')
 
 def evaluate_recommender(recommender, test_df: pd.DataFrame, 
                          strategies: List[str], 
-                         k_values: List[int] = [5, 10, 20],
-                         sample_ratio: float = 0.1) -> Dict[str, Dict[str, float]]:
+                         k_values: List[int] = [10],
+                         sample_size: int = 10) -> Dict[str, Dict[str, float]]:
     """
     Evaluate a recommender model using precision@k and recall@k.
     
@@ -29,9 +34,9 @@ def evaluate_recommender(recommender, test_df: pd.DataFrame,
     strategies : list
         List of strategies to evaluate ('collaborative', 'content', 'hybrid')
     k_values : list, optional
-        List of k values to evaluate (default: [5, 10, 20])
-    sample_ratio : float, optional
-        Ratio of test users to sample for evaluation (default: 0.1 = 10%)
+        List of k values to evaluate (default: [10])
+    sample_size : int, optional
+        Number of test users to sample for evaluation (default: 10)
         
     Returns
     -------
@@ -48,11 +53,11 @@ def evaluate_recommender(recommender, test_df: pd.DataFrame,
     # Group test data by user
     test_users = test_df.groupby('user_id')['book_id'].apply(list).to_dict()
     
-    # Sample a subset of users to speed up evaluation
+    # Sample a fixed number of users to speed up evaluation
     user_ids = list(test_users.keys())
-    n_sample = max(1, int(len(user_ids) * sample_ratio))
+    n_sample = min(sample_size, len(user_ids))  # Cap at the number of available users
     sampled_user_ids = np.random.choice(user_ids, size=n_sample, replace=False)
-    logger.info(f"Evaluating on {n_sample} users ({sample_ratio*100:.1f}% of {len(user_ids)} total users)")
+    logger.info(f"Evaluating on {n_sample} users (out of {len(user_ids)} total users)")
     
     # For each strategy requested
     for strategy in strategies:
@@ -147,7 +152,7 @@ def save_evaluation_results(evaluation_results: Dict[str, Dict[str, float]],
 def run_evaluation(recommender, test_file: str = 'merged_test.csv', 
                   data_dir: str = 'data/processed',
                   strategies: List[str] = None, 
-                  sample_ratio: float = 0.1) -> Dict[str, Dict[str, float]]:
+                  sample_size: int = 10) -> Dict[str, Dict[str, float]]:
     """
     Run evaluation on a recommender model.
     
@@ -161,8 +166,8 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
         Directory containing the test file (default: 'data/processed')
     strategies : list, optional
         List of strategies to evaluate (default: all supported strategies)
-    sample_ratio : float, optional
-        Ratio of test users to sample for evaluation (default: 0.1 = 10%)
+    sample_size : int, optional
+        Number of test users to sample for evaluation (default: 10)
         
     Returns
     -------
@@ -198,7 +203,7 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
             recommender=recommender,
             test_df=test_df,
             strategies=strategies,
-            sample_ratio=sample_ratio
+            sample_size=sample_size
         )
         
         # Save evaluation results

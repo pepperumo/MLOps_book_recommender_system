@@ -1,7 +1,7 @@
 {
     "model_type": "CollaborativeRecommender",
-    "user_count": 26096,
-    "book_count": 812,
+    "user_count": 1971,
+    "book_count": 499,
     "n_neighbors": 20,
-    "timestamp": "20250311_184005"
+    "timestamp": "20250312_030746"
 }

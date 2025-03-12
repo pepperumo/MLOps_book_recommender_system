@@ -17,7 +17,10 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Union, Any
 
-from .train_model_base import BaseRecommender, load_data
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.models.train_model_base import BaseRecommender, load_data
 
 # Use the existing logger
 logger = logging.getLogger('train_model')

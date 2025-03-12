@@ -17,7 +17,10 @@ import argparse
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Union, Any
 
-from .train_model_base import BaseRecommender, load_data
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from src.models.train_model_base import BaseRecommender, load_data
 
 # Use the existing logger
 logger = logging.getLogger('train_model')
@@ -73,6 +76,16 @@ class CollaborativeRecommender(BaseRecommender):
         logger.info("Training collaborative filtering model...")
         
         try:
+            # Get matrix dimensions for logging
+            n_users, n_items = self.user_item_matrix.shape
+            logger.info(f"User-item matrix shape: {n_users} users x {n_items} items, density: {self.user_item_matrix.nnz / (n_users * n_items):.6f}")
+            
+            # Memory-efficient approach for large matrices
+            # For very large datasets, we'll use a lower n_neighbors value
+            if n_items > 1000:
+                self.n_neighbors = min(self.n_neighbors, 10)
+                logger.info(f"Large dataset detected, limiting neighbors to {self.n_neighbors}")
+            
             # Calculate item vectors by transposing the user-item matrix
             item_vecs = self.user_item_matrix.T.tocsr()
             
@@ -80,8 +93,11 @@ class CollaborativeRecommender(BaseRecommender):
             self.item_nn_model = NearestNeighbors(
                 n_neighbors=self.n_neighbors + 1,  # +1 because the item itself will be included
                 metric='cosine',
-                algorithm='brute'
+                algorithm='auto',  # Changed from 'brute' to 'auto' for better performance with large datasets
+                n_jobs=-1  # Use all available CPU cores
             )
+            
+            logger.info(f"Fitting nearest neighbors model with {item_vecs.shape[0]} items...")
             self.item_nn_model.fit(item_vecs)
             
             training_time = (datetime.now() - start_time).total_seconds()
@@ -91,6 +107,7 @@ class CollaborativeRecommender(BaseRecommender):
             
         except Exception as e:
             logger.error(f"Error training collaborative filtering model: {e}")
+            logger.error(traceback.format_exc())  # Add full traceback for better debugging
             return self
     
     def recommend_for_user(self, user_id: int, n_recommendations: int = 10) -> List[int]:

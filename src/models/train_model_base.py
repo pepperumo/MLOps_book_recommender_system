@@ -165,7 +165,7 @@ class BaseRecommender:
             }
             
             # Save metadata file
-            with open(os.path.join(model_dir, f'{model_name}_metadata.json'), 'w') as f:
+            with open(os.path.join(model_dir, f'{model_name}_metadata.json'), 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=4)
                 
             logger.info(f"Model metadata saved successfully to {model_dir}")
@@ -260,7 +260,7 @@ def load_data(features_dir: str = 'data/features') -> Tuple[Optional[sp.csr_matr
         # Load feature names
         feature_names_path = os.path.join(features_dir, 'feature_names.txt')
         if os.path.exists(feature_names_path):
-            with open(feature_names_path, 'r') as f:
+            with open(feature_names_path, 'r', encoding='utf-8') as f:
                 feature_names = [line.strip() for line in f.readlines()]
             logger.info(f"Loaded {len(feature_names)} feature names")
         else:
