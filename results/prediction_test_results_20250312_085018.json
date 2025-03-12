@@ -1,0 +1,174 @@
+{
+  "user_results": {
+    "user_results": {
+      "1634": {
+        "recommendations": [
+          27,
+          457,
+          7,
+          149,
+          379
+        ],
+        "count": 5,
+        "timing": 0.2319810390472412
+      },
+      "1520": {
+        "recommendations": [
+          221,
+          101,
+          22,
+          207,
+          477
+        ],
+        "count": 5,
+        "timing": 0.40380120277404785
+      },
+      "1629": {
+        "recommendations": [
+          198,
+          374,
+          41,
+          442,
+          377
+        ],
+        "count": 5,
+        "timing": 0.19367647171020508
+      },
+      "1120": {
+        "recommendations": [
+          111,
+          482,
+          467,
+          149,
+          27
+        ],
+        "count": 5,
+        "timing": 0.43291163444519043
+      },
+      "271": {
+        "recommendations": [
+          477,
+          243,
+          353,
+          448,
+          368
+        ],
+        "count": 5,
+        "timing": 0.546442985534668
+      }
+    },
+    "timing": [
+      0.2319810390472412,
+      0.40380120277404785,
+      0.19367647171020508,
+      0.43291163444519043,
+      0.546442985534668
+    ],
+    "recommendation_count": [
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    "recommendation_overlap": [
+      0.0,
+      0.0,
+      0.25,
+      0.0,
+      0.0,
+      0.0,
+      0.1111111111111111,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "similar_book_results": {
+    "book_results": {
+      "254": {
+        "recommendations": [
+          500,
+          132,
+          466,
+          445,
+          209
+        ],
+        "count": 5,
+        "timing": 0.10386300086975098
+      },
+      "238": {
+        "recommendations": [
+          463,
+          430,
+          412,
+          161,
+          217
+        ],
+        "count": 5,
+        "timing": 0.10146546363830566
+      },
+      "389": {
+        "recommendations": [
+          143,
+          212,
+          302,
+          430,
+          380
+        ],
+        "count": 5,
+        "timing": 0.10734033584594727
+      },
+      "233": {
+        "recommendations": [
+          307,
+          304,
+          437,
+          357,
+          453
+        ],
+        "count": 5,
+        "timing": 0.0927729606628418
+      },
+      "123": {
+        "recommendations": [
+          122,
+          10,
+          91,
+          324,
+          96
+        ],
+        "count": 5,
+        "timing": 0.10173296928405762
+      }
+    },
+    "timing": [
+      0.10386300086975098,
+      0.10146546363830566,
+      0.10734033584594727,
+      0.0927729606628418,
+      0.10173296928405762
+    ],
+    "recommendation_count": [
+      5,
+      5,
+      5,
+      5,
+      5
+    ]
+  },
+  "cold_start_results": {
+    "recommendations": {},
+    "count": 0,
+    "timing": 0.0009927749633789062
+  },
+  "summary": {
+    "avg_user_recommendation_time": 0.36176266670227053,
+    "avg_user_recommendations_count": 5.0,
+    "avg_user_recommendation_overlap": 0.03611111111111111,
+    "avg_similar_book_time": 0.10143494606018066,
+    "avg_similar_book_count": 5.0,
+    "cold_start_time": 0.0009927749633789062,
+    "cold_start_count": 0
+  }
+}

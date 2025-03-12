@@ -1,12 +1,12 @@
 import os
+import sys
 import pickle
+import logging
+import traceback
 import pandas as pd
 import argparse
 import numpy as np
-import sys
-import logging
-import traceback
-from typing import List, Dict, Union, Optional, Tuple, Any
+from typing import List, Dict, Tuple, Any, Optional, Union
 from datetime import datetime
 
 # Set up logging
@@ -25,20 +25,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger('predict_model')
 
-# Import the load_data function from train_model
+# Import the base classes and functions from our recommender modules
 try:
-    from src.models.train_model import load_data, BookRecommender
+    from src.models.model_utils import BaseRecommender, load_data
+    from src.models.train_model import CollaborativeRecommender
 except ImportError:
     try:
-        from models.train_model import load_data, BookRecommender
+        from models.model_utils import BaseRecommender, load_data
+        from models.train_model import CollaborativeRecommender
     except ImportError:
         import sys
         import os
         # Add the parent directory to the path to ensure we can import the module
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.append(parent_dir)
-        from models.train_model import load_data, BookRecommender
-        logger.error("Could not import from src.models.train_model. Using relative import.")
+        from models.model_utils import BaseRecommender, load_data
+        from models.train_model import CollaborativeRecommender
+        logger.error("Could not import from src.models. Using relative import.")
 
 def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFrame:
     """
@@ -54,9 +57,11 @@ def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFra
     Returns
     -------
     pandas.DataFrame
-        DataFrame with book metadata
+        DataFrame with book metadata for books that have complete metadata
     """
     logger.info(f"Retrieving metadata for {len(book_ids)} books")
+    
+    result_df = pd.DataFrame()
     
     # First try to get metadata from merged_train.csv
     train_path = os.path.join(data_dir, 'processed', 'merged_train.csv')
@@ -86,63 +91,63 @@ def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFra
                 missing_cols = [col for col in required_cols if col not in result_df.columns]
                 if missing_cols:
                     logger.warning(f"Missing columns in merged_train.csv: {missing_cols}")
-                else:
-                    # If we found all books, return the result
-                    if len(result_df) == len(book_ids):
-                        return result_df
+                    # If critical columns are missing from dataset, clear result_df
+                    # so we can try with books.csv
+                    result_df = pd.DataFrame()
         except Exception as e:
             logger.error(f"Error reading merged_train.csv: {e}")
             logger.debug(traceback.format_exc())
+            result_df = pd.DataFrame()
     
     # If we couldn't get all metadata from merged_train.csv, try the original books.csv
-    books_path = os.path.join(data_dir, 'raw', 'books.csv')
-    if os.path.exists(books_path):
-        try:
-            df = pd.read_csv(books_path)
-            logger.info(f"Loaded books.csv with shape {df.shape}")
-            logger.debug(f"Column dtypes: {df.dtypes}")
-            
-            # Check that book_id column exists
-            if 'book_id' in df.columns:
-                # Filter to the books we want
-                result_df = df[df['book_id'].isin(book_ids)].drop_duplicates(subset=['book_id'])
-                logger.info(f"Found {len(result_df)} books in books.csv")
+    if result_df.empty:
+        books_path = os.path.join(data_dir, 'raw', 'books.csv')
+        if os.path.exists(books_path):
+            try:
+                df = pd.read_csv(books_path)
+                logger.info(f"Loaded books.csv with shape {df.shape}")
+                logger.debug(f"Column dtypes: {df.dtypes}")
                 
-                # Handle column variations
-                if 'authors' not in result_df.columns and 'author' in result_df.columns:
-                    result_df = result_df.rename(columns={'author': 'authors'})
+                # Check that book_id column exists
+                if 'book_id' in df.columns:
+                    # Filter to the books we want
+                    result_df = df[df['book_id'].isin(book_ids)].drop_duplicates(subset=['book_id'])
+                    logger.info(f"Found {len(result_df)} books in books.csv")
                     
-                if 'title' not in result_df.columns and 'book_title' in result_df.columns:
-                    result_df = result_df.rename(columns={'book_title': 'title'})
-                
-                # Add missing books from the first DataFrame if available
-                if 'train_result_df' in locals() and len(result_df) < len(book_ids):
-                    missing_ids = set(book_ids) - set(result_df['book_id'])
-                    missing_df = train_result_df[train_result_df['book_id'].isin(missing_ids)]
-                    result_df = pd.concat([result_df, missing_df], ignore_index=True)
-                    logger.info(f"Combined dataframes to find {len(result_df)} books")
-        except Exception as e:
-            logger.error(f"Error reading books.csv: {e}")
-            logger.debug(traceback.format_exc())
+                    # Handle column variations
+                    if 'authors' not in result_df.columns and 'author' in result_df.columns:
+                        result_df = result_df.rename(columns={'author': 'authors'})
+                        
+                    if 'title' not in result_df.columns and 'book_title' in result_df.columns:
+                        result_df = result_df.rename(columns={'book_title': 'title'})
+            except Exception as e:
+                logger.error(f"Error reading books.csv: {e}")
+                logger.debug(traceback.format_exc())
     
-    # Create a skeleton DataFrame for books we couldn't find
-    if 'result_df' not in locals() or len(result_df) < len(book_ids):
-        logger.warning("Creating placeholder entries for books without metadata")
-        missing_ids = set(book_ids) - (set(result_df['book_id']) if 'result_df' in locals() else set())
-        missing_df = pd.DataFrame({
-            'book_id': list(missing_ids),
-            'title': [f"Unknown (ID: {book_id})" for book_id in missing_ids],
-            'authors': ["Unknown" for _ in missing_ids]
-        })
+    # Filter out books that don't have both title and authors
+    if not result_df.empty:
+        # Check for null/missing values in essential columns
+        result_df = result_df.dropna(subset=['title', 'authors'])
         
-        result_df = pd.concat([result_df, missing_df], ignore_index=True) if 'result_df' in locals() else missing_df
-    
-    # Save metadata to CSV for analysis
-    output_dir = os.path.join(data_dir, 'processed')
-    os.makedirs(output_dir, exist_ok=True)
-    metadata_file = os.path.join(output_dir, f'book_metadata_{timestamp}.csv')
-    result_df.to_csv(metadata_file, index=False)
-    logger.info(f"Saved book metadata to {metadata_file}")
+        # Further filter out books with "Unknown" placeholders that might have slipped through
+        result_df = result_df[~((result_df['title'].str.contains('Unknown')) & 
+                                (result_df['authors'] == 'Unknown'))]
+        
+        logger.info(f"After filtering for complete metadata, found {len(result_df)} valid books")
+        
+        # If we found fewer books than requested, log which ones are missing
+        if len(result_df) < len(book_ids):
+            missing_ids = set(book_ids) - set(result_df['book_id'])
+            logger.warning(f"Could not find metadata for {len(missing_ids)} books: {list(missing_ids)}")
+        
+        # Save metadata to CSV for analysis
+        output_dir = os.path.join(data_dir, 'processed')
+        os.makedirs(output_dir, exist_ok=True)
+        metadata_file = os.path.join(output_dir, f'book_metadata_{timestamp}.csv')
+        result_df.to_csv(metadata_file, index=False)
+        logger.info(f"Saved book metadata to {metadata_file}")
+    else:
+        logger.warning(f"Could not find metadata for any of the {len(book_ids)} requested books")
     
     return result_df
 
@@ -187,9 +192,116 @@ def load_book_id_mapping(data_dir: str = 'data') -> Dict[int, int]:
         return {}
 
 
-def recommend_for_user(user_id: int, model_path: str = 'models/book_recommender.pkl', 
-                      num_recommendations: int = 5, strategy: str = 'hybrid', 
-                      data_dir: str = 'data') -> pd.DataFrame:
+def load_recommender_model(model_type: str = 'collaborative', model_dir: str = 'models') -> BaseRecommender:
+    """
+    Load a trained recommender model with Docker compatibility handling.
+    
+    Parameters
+    ----------
+    model_type : str
+        Type of recommender to load ('collaborative')
+    model_dir : str
+        Directory where models are stored
+        
+    Returns
+    -------
+    BaseRecommender
+        Loaded recommender model
+    """
+    # Only support collaborative model
+    if model_type != 'collaborative':
+        logger.warning(f"Only collaborative model is supported. Ignoring model_type: {model_type}")
+        model_type = 'collaborative'
+    
+    try:
+        # Ensure we have the models directory
+        os.makedirs(model_dir, exist_ok=True)
+        
+        # First try the new naming convention (model_type.pkl)
+        model_path = os.path.join(model_dir, f"{model_type}.pkl")
+        
+        if not os.path.exists(model_path):
+            # Fall back to the old naming convention (model_type_recommender.pkl)
+            model_path = os.path.join(model_dir, f"{model_type}_recommender.pkl")
+            
+            if not os.path.exists(model_path):
+                logger.warning(f"Model file not found at {model_path}")
+                return None
+
+        # Define a custom unpickler to handle module path differences
+        class CustomUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                # Handle cases where the module path might be different in Docker
+                if name == 'CollaborativeRecommender':
+                    logger.info(f"Finding CollaborativeRecommender class from {module}")
+                    # Try different module paths that might exist in Docker
+                    possible_modules = [
+                        module,
+                        'src.models.train_model',
+                        'models.train_model',
+                        '__main__'
+                    ]
+                    
+                    for mod in possible_modules:
+                        try:
+                            # Try to import the module and get the class
+                            __import__(mod, fromlist=[name])
+                            if mod == module:
+                                return super().find_class(module, name)
+                            else:
+                                return super().find_class(mod, name)
+                        except (ImportError, AttributeError, ValueError):
+                            continue
+                    
+                    # If we can't find the class in any of the modules, use our imported version
+                    logger.warning(f"Could not find {name} in any module, using imported version")
+                    return CollaborativeRecommender
+                
+                # For other classes, try the standard approach
+                try:
+                    return super().find_class(module, name)
+                except (ImportError, AttributeError) as e:
+                    logger.warning(f"Error finding class {module}.{name}: {e}")
+                    
+                    # Handle common module path transformations
+                    if module.startswith('__main__'):
+                        # Try both src.models and models prefixes
+                        possible_new_modules = [
+                            module.replace('__main__', 'src.models.train_model'),
+                            module.replace('__main__', 'models.train_model')
+                        ]
+                        
+                        for new_module in possible_new_modules:
+                            try:
+                                return super().find_class(new_module, name)
+                            except (ImportError, AttributeError):
+                                pass
+                    
+                    # Last resort: try to find a class with the same name in our current scope
+                    if name in globals():
+                        logger.info(f"Using globally defined {name} instead of {module}.{name}")
+                        return globals()[name]
+                    
+                    raise  # Re-raise if we can't handle it
+            
+        logger.info(f"Loading {model_type} model from {model_path} with custom unpickler")
+        with open(model_path, 'rb') as f:
+            model = CustomUnpickler(f).load()
+            
+        # Verify that the model is of the right type
+        if not isinstance(model, BaseRecommender):
+            logger.error(f"Model is not a BaseRecommender instance: {type(model)}")
+            return None
+            
+        logger.info(f"Successfully loaded {model_type} model")
+        return model
+    except Exception as e:
+        logger.error(f"Error loading {model_type} model: {e}")
+        logger.debug(traceback.format_exc())
+        return None
+
+def recommend_for_user(user_id: int, model_type: str = 'collaborative', 
+                      num_recommendations: int = 5, data_dir: str = 'data') -> pd.DataFrame:
     """
     Generate book recommendations for a specific user.
     
@@ -197,95 +309,87 @@ def recommend_for_user(user_id: int, model_path: str = 'models/book_recommender.
     ----------
     user_id : int
         ID of the user to generate recommendations for
-    model_path : str
-        Path to the trained recommender model
+    model_type : str
+        Type of recommender to use ('collaborative')
     num_recommendations : int
         Number of recommendations to generate
-    strategy : str
-        Recommendation strategy ('collaborative', 'content', or 'hybrid')
     data_dir : str
         Path to the data directory
         
     Returns
     -------
     pandas.DataFrame
-        DataFrame with book metadata for recommended books
+        DataFrame with recommendations and metadata
     """
-    logger.info(f"Generating recommendations for user {user_id} using strategy '{strategy}'")
+    # Only support collaborative model
+    if model_type != 'collaborative':
+        logger.warning(f"Only collaborative model is supported. Ignoring model_type: {model_type}")
+        model_type = 'collaborative'
     
-    # Load the model
     try:
-        with open(model_path, 'rb') as f:
-            recommender = pickle.load(f)
-        logger.info(f"Loaded recommender model from {model_path}")
-    except FileNotFoundError:
-        logger.error(f"Model file not found at {model_path}")
-        return pd.DataFrame()
+        # Load the model
+        model_dir = os.path.join(data_dir, '..', 'models')
+        model = load_recommender_model(model_type, model_dir=model_dir)
+        
+        if model is None:
+            logger.error(f"Could not load {model_type} model")
+            return pd.DataFrame()
+        
+        logger.info(f"Generating {num_recommendations} recommendations for user {user_id} using {model_type} model")
+        
+        # Generate recommendations
+        start_time = datetime.now()
+        book_ids = model.recommend_for_user(user_id, n_recommendations=num_recommendations)
+        end_time = datetime.now()
+        
+        if not book_ids:
+            logger.warning(f"No recommendations generated for user {user_id}")
+            return pd.DataFrame()
+            
+        logger.info(f"Generated {len(book_ids)} recommendations in {(end_time - start_time).total_seconds():.2f} seconds")
+        
+        # Convert book IDs back to original IDs if needed
+        book_id_mapping = load_book_id_mapping(data_dir)
+        if book_id_mapping:
+            original_book_ids = [book_id_mapping.get(book_id, book_id) for book_id in book_ids]
+            logger.info(f"Converted {len(original_book_ids)} book IDs from encoded to original IDs")
+            book_ids = original_book_ids
+        
+        # Get book metadata
+        recommendations_df = get_book_metadata(book_ids, data_dir)
+        
+        if recommendations_df.empty:
+            logger.warning(f"Could not find metadata for recommended books")
+            return pd.DataFrame()
+            
+        # Add rank information as column
+        # Generate a rank dictionary with book_id as key and position as value
+        rank_dict = {book_id: i for i, book_id in enumerate(book_ids)}
+        
+        # Add rank to recommendations DataFrame
+        recommendations_df['rank'] = recommendations_df['book_id'].map(rank_dict)
+        
+        # Sort by rank
+        recommendations_df = recommendations_df.sort_values('rank')
+        
+        # Save the recommendations to CSV for analysis
+        if recommendations_df.shape[0] > 0:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = os.path.join(data_dir, 'results')
+            os.makedirs(output_dir, exist_ok=True)
+            recommendations_file = os.path.join(output_dir, f'user_{user_id}_recommendations_{timestamp}.csv')
+            recommendations_df.to_csv(recommendations_file, index=False)
+            logger.info(f"Saved recommendations for user {user_id} to {recommendations_file}")
+        
+        return recommendations_df
+        
     except Exception as e:
-        logger.error(f"Error loading model: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load the matrices that weren't included in the pickled model
-    try:
-        features_dir = os.path.join(data_dir, 'features')
-        user_item_matrix, book_feature_matrix, book_similarity_matrix, book_ids, feature_names = load_data(features_dir)
-        
-        # Set the matrices in the recommender
-        recommender.user_item_matrix = user_item_matrix
-        recommender.book_feature_matrix = book_feature_matrix
-        recommender.book_similarity_matrix = book_similarity_matrix
-        recommender.book_ids = book_ids
-        recommender.feature_names = feature_names
-        
-        logger.info(f"Loaded matrices: user-item {user_item_matrix.shape}, book-feature {book_feature_matrix.shape}")
-    except Exception as e:
-        logger.error(f"Error loading matrices: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load book ID mapping
-    encoded_to_original = load_book_id_mapping(data_dir)
-    
-    # Generate recommendations based on the specified strategy
-    try:
-        if strategy == 'collaborative':
-            encoded_book_ids = recommender.recommend_for_user(user_id, n_recommendations=num_recommendations, strategy='collaborative')
-        elif strategy == 'content':
-            encoded_book_ids = recommender.recommend_for_user(user_id, n_recommendations=num_recommendations, strategy='content')
-        else:  # hybrid
-            encoded_book_ids = recommender.recommend_for_user(user_id, n_recommendations=num_recommendations, strategy='hybrid')
-        
-        # Limit to requested number of recommendations (just in case)
-        encoded_book_ids = encoded_book_ids[:num_recommendations]
-        logger.info(f"Generated {len(encoded_book_ids)} recommendations using {strategy} strategy")
-        
-        # Convert encoded IDs to original IDs if mapping is available
-        if encoded_to_original:
-            original_book_ids = [encoded_to_original.get(book_id, book_id) for book_id in encoded_book_ids]
-            logger.info(f"Mapped {len(encoded_book_ids)} encoded IDs to original IDs")
-        else:
-            original_book_ids = encoded_book_ids
-            logger.warning("No ID mapping available, using encoded IDs directly")
-        
-        # Get metadata for recommended books
-        book_metadata = get_book_metadata(original_book_ids, data_dir)
-        
-        # Save recommendations to CSV
-        output_dir = os.path.join(data_dir, 'results')
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f'user_{user_id}_recommendations_{strategy}_{timestamp}.csv')
-        book_metadata.to_csv(output_file, index=False)
-        logger.info(f"Saved user recommendations to {output_file}")
-        
-        return book_metadata
-    except Exception as e:
-        logger.error(f"Error generating recommendations: {e}")
+        logger.error(f"Error generating recommendations for user {user_id}: {e}")
         logger.debug(traceback.format_exc())
         return pd.DataFrame()
 
 
-def recommend_similar_books(book_id: int, model_path: str = 'models/book_recommender.pkl', 
+def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
                            num_recommendations: int = 5, data_dir: str = 'data') -> pd.DataFrame:
     """
     Generate similar book recommendations for a specific book.
@@ -294,8 +398,8 @@ def recommend_similar_books(book_id: int, model_path: str = 'models/book_recomme
     ----------
     book_id : int
         ID of the book to find similar books for
-    model_path : str
-        Path to the trained recommender model
+    model_type : str
+        Type of recommender to use ('collaborative')
     num_recommendations : int
         Number of recommendations to generate
     data_dir : str
@@ -306,93 +410,89 @@ def recommend_similar_books(book_id: int, model_path: str = 'models/book_recomme
     pandas.DataFrame
         DataFrame with similar book metadata
     """
-    logger.info(f"Finding similar books to book ID {book_id}")
+    # Only support collaborative model
+    if model_type != 'collaborative':
+        logger.warning(f"Only collaborative model is supported. Ignoring model_type: {model_type}")
+        model_type = 'collaborative'
     
-    # Load the model
     try:
-        with open(model_path, 'rb') as f:
-            recommender = pickle.load(f)
-        logger.info(f"Loaded recommender model from {model_path}")
-    except FileNotFoundError:
-        logger.error(f"Model file not found at {model_path}")
-        return pd.DataFrame()
+        # Load the model
+        model_dir = os.path.join(data_dir, '..', 'models')
+        model = load_recommender_model(model_type, model_dir=model_dir)
+        
+        if model is None:
+            logger.error(f"Could not load {model_type} model")
+            return pd.DataFrame()
+        
+        logger.info(f"Finding {num_recommendations} similar books to book {book_id} using {model_type} model")
+        
+        # Check if we need to convert book_id from original to encoded ID
+        book_id_mapping_path = os.path.join(data_dir, 'processed', 'book_id_mapping.csv')
+        if os.path.exists(book_id_mapping_path):
+            try:
+                mapping_df = pd.read_csv(book_id_mapping_path)
+                original_to_encoded = dict(zip(mapping_df['book_id'], mapping_df['book_id_encoded']))
+                
+                if book_id in original_to_encoded:
+                    encoded_book_id = original_to_encoded[book_id]
+                    logger.info(f"Converted original book ID {book_id} to encoded ID {encoded_book_id}")
+                    book_id = encoded_book_id
+            except Exception as e:
+                logger.error(f"Error converting book ID: {e}")
+        
+        # Generate recommendations
+        start_time = datetime.now()
+        similar_book_ids = model.recommend_similar_books(book_id, n=num_recommendations)
+        end_time = datetime.now()
+        
+        if not similar_book_ids:
+            logger.warning(f"No similar books found for book {book_id}")
+            return pd.DataFrame()
+            
+        logger.info(f"Found {len(similar_book_ids)} similar books in {(end_time - start_time).total_seconds():.2f} seconds")
+        
+        # Convert book IDs back to original IDs if needed
+        book_id_mapping = load_book_id_mapping(data_dir)
+        if book_id_mapping:
+            original_book_ids = [book_id_mapping.get(book_id, book_id) for book_id in similar_book_ids]
+            logger.info(f"Converted {len(original_book_ids)} book IDs from encoded to original IDs")
+            similar_book_ids = original_book_ids
+        
+        # Get book metadata
+        recommendations_df = get_book_metadata(similar_book_ids, data_dir)
+        
+        if recommendations_df.empty:
+            logger.warning(f"Could not find metadata for similar books")
+            return pd.DataFrame()
+            
+        # Add rank information as column
+        # Generate a rank dictionary with book_id as key and position as value
+        rank_dict = {book_id: i for i, book_id in enumerate(similar_book_ids)}
+        
+        # Add rank to recommendations DataFrame
+        recommendations_df['rank'] = recommendations_df['book_id'].map(rank_dict)
+        
+        # Sort by rank
+        recommendations_df = recommendations_df.sort_values('rank')
+        
+        # Save the recommendations to CSV for analysis
+        if recommendations_df.shape[0] > 0:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = os.path.join(data_dir, 'results')
+            os.makedirs(output_dir, exist_ok=True)
+            recommendations_file = os.path.join(output_dir, f'book_{book_id}_similar_books_{timestamp}.csv')
+            recommendations_df.to_csv(recommendations_file, index=False)
+            logger.info(f"Saved similar books for book {book_id} to {recommendations_file}")
+        
+        return recommendations_df
+        
     except Exception as e:
-        logger.error(f"Error loading model: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load the matrices that weren't included in the pickled model
-    try:
-        features_dir = os.path.join(data_dir, 'features')
-        user_item_matrix, book_feature_matrix, book_similarity_matrix, book_ids, feature_names = load_data(features_dir)
-        
-        # Set the matrices in the recommender
-        recommender.user_item_matrix = user_item_matrix
-        recommender.book_feature_matrix = book_feature_matrix
-        recommender.book_similarity_matrix = book_similarity_matrix
-        recommender.book_ids = book_ids
-        recommender.feature_names = feature_names
-        
-        logger.info(f"Loaded matrices: user-item {user_item_matrix.shape}, book-feature {book_feature_matrix.shape}")
-    except Exception as e:
-        logger.error(f"Error loading matrices: {e}")
-        logger.debug(traceback.format_exc())
-        return pd.DataFrame()
-    
-    # Load book ID mapping
-    encoded_to_original = load_book_id_mapping(data_dir)
-    
-    # Convert original book ID to encoded ID if mapping is available
-    try:
-        if encoded_to_original:
-            # We need to map in the opposite direction
-            original_to_encoded = {v: k for k, v in encoded_to_original.items()}
-            encoded_book_id = original_to_encoded.get(book_id, book_id)
-            if encoded_book_id != book_id:
-                logger.info(f"Mapped original book ID {book_id} to encoded ID {encoded_book_id}")
-            else:
-                logger.warning(f"Could not find encoded ID for book {book_id}, using as is")
-        else:
-            encoded_book_id = book_id
-            logger.warning("No ID mapping available, using original ID directly")
-        
-        # Get similar books
-        encoded_similar_book_ids = recommender.recommend_similar_books(encoded_book_id, n=num_recommendations)
-        
-        # Limit to the requested number and remove duplicates
-        encoded_similar_book_ids = list(dict.fromkeys(encoded_similar_book_ids))[:num_recommendations]
-        logger.info(f"Found {len(encoded_similar_book_ids)} similar books")
-        
-        # Convert encoded IDs to original IDs if mapping is available
-        if encoded_to_original:
-            original_similar_book_ids = [encoded_to_original.get(book_id, book_id) 
-                                       for book_id in encoded_similar_book_ids]
-            logger.info(f"Mapped {len(encoded_similar_book_ids)} encoded IDs to original IDs")
-        else:
-            original_similar_book_ids = encoded_similar_book_ids
-            logger.warning("No ID mapping available, using encoded IDs directly")
-        
-        # Get metadata for the original book
-        original_book_metadata = get_book_metadata([book_id], data_dir)
-        
-        # Get metadata for recommended books
-        similar_books_metadata = get_book_metadata(original_similar_book_ids, data_dir)
-        
-        # Save recommendations to CSV
-        output_dir = os.path.join(data_dir, 'results')
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f'book_{book_id}_similar_books_{timestamp}.csv')
-        similar_books_metadata.to_csv(output_file, index=False)
-        logger.info(f"Saved similar books to {output_file}")
-        
-        return similar_books_metadata
-    except Exception as e:
-        logger.error(f"Error finding similar books: {e}")
+        logger.error(f"Error finding similar books for book {book_id}: {e}")
         logger.debug(traceback.format_exc())
         return pd.DataFrame()
 
 
-def print_recommendations(recommendations_df: pd.DataFrame, header: str = "Recommendations:") -> None:
+def print_recommendations(recommendations_df: pd.DataFrame, header: str = "Recommendations:"):
     """
     Print formatted recommendations with book titles and authors.
     
@@ -403,20 +503,20 @@ def print_recommendations(recommendations_df: pd.DataFrame, header: str = "Recom
     header : str
         Header text to display before recommendations
     """
-    print(f"\n{header}")
-    if len(recommendations_df) == 0:
-        print("  No recommendations available.")
+    if recommendations_df.empty:
+        print("No recommendations available.")
         return
+        
+    print(f"\n{header}")
+    print("-" * 80)
     
-    # Remove any duplicate book_ids, keeping the first occurrence
-    recommendations_df = recommendations_df.drop_duplicates(subset=['book_id'])
+    for i, (_, row) in enumerate(recommendations_df.iterrows(), 1):
+        title = row.get('title', 'Unknown Title')
+        authors = row.get('authors', 'Unknown Author')
+        book_id = row.get('book_id', 'Unknown ID')
+        print(f"{i}. '{title}' by {authors} (Book ID: {book_id})")
     
-    # Print each book with its metadata
-    for idx, book in recommendations_df.iterrows():
-        title = book.get('title', f"Unknown (ID: {book['book_id']})")
-        authors = book.get('authors', 'Unknown')
-        book_id = book['book_id']
-        print(f"  * {title} by {authors} (ID: {book_id})")
+    print("-" * 80)
 
 
 def main(args: Optional[List[str]] = None) -> int:
@@ -433,73 +533,90 @@ def main(args: Optional[List[str]] = None) -> int:
     int
         Exit code
     """
-    logger.info("Starting predict_model.py")
-    
-    # Parse command line arguments
     parser = argparse.ArgumentParser(description='Generate book recommendations')
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--user', type=int, help='User ID to generate recommendations for')
-    group.add_argument('--book', type=int, help='Book ID to find similar books for')
-    parser.add_argument('--num', type=int, default=5, help='Number of recommendations to generate')
-    parser.add_argument('--strategy', type=str, choices=['collaborative', 'content', 'hybrid'], 
-                        default='hybrid', help='Recommendation strategy for user recommendations')
-    parser.add_argument('--model-path', type=str, default='models/book_recommender.pkl', help='Path to the model file')
-    parser.add_argument('--data-dir', type=str, default='data', help='Path to the data directory')
     
+    # Define command-line arguments
+    subparsers = parser.add_subparsers(dest='command', help='Command to run')
+    
+    # User recommendations command
+    user_parser = subparsers.add_parser('user', help='Generate recommendations for a user')
+    user_parser.add_argument('user_id', type=int, help='User ID to generate recommendations for')
+    user_parser.add_argument('--num', type=int, default=5, help='Number of recommendations to generate')
+    user_parser.add_argument('--model', type=str, choices=['collaborative'], default='collaborative',
+                            help='Model type to use for recommendations')
+    user_parser.add_argument('--data-dir', type=str, default='data', help='Data directory path')
+    
+    # Book recommendations command
+    book_parser = subparsers.add_parser('book', help='Find similar books')
+    book_parser.add_argument('book_id', type=int, help='Book ID to find similar books for')
+    book_parser.add_argument('--num', type=int, default=5, help='Number of similar books to find')
+    book_parser.add_argument('--model', type=str, choices=['collaborative'], default='collaborative',
+                            help='Model type to use for recommendations')
+    book_parser.add_argument('--data-dir', type=str, default='data', help='Data directory path')
+    
+    # Parse arguments
     args = parser.parse_args(args)
     
-    try:
-        logger.info(f"Args: {vars(args)}")
-        
-        # Check if model file exists
-        if not os.path.exists(args.model_path):
-            logger.error(f"Model file not found at {args.model_path}")
-            return 1
-        
-        # Check if data directory exists
-        features_dir = os.path.join(args.data_dir, 'features')
-        if not os.path.exists(features_dir):
-            logger.error(f"Features directory not found at {features_dir}")
-            return 1
-        
-        print("Loading data...")
-        
-        if args.user is not None:
-            # Generate recommendations for user
-            recommendations = recommend_for_user(
-                args.user, 
-                model_path=args.model_path, 
-                num_recommendations=args.num, 
-                strategy=args.strategy,
-                data_dir=args.data_dir
-            )
+    # Execute command
+    if args.command == 'user':
+        try:
+            logger.info(f"Generating recommendations for user {args.user_id} using {args.model} model")
             
-            print_recommendations(recommendations, header=f"Recommendations for User {args.user} (Strategy: {args.strategy}):")
-        else:
-            # Get book metadata to display what book we're finding similar books for
-            book_metadata = get_book_metadata([args.book], args.data_dir)
-            if len(book_metadata) > 0:
-                book = book_metadata.iloc[0]
-                title = book.get('title', f"Unknown (ID: {args.book})")
-                authors = book.get('authors', 'Unknown')
-                print(f"\nSimilar books to: {title} by {authors} (ID: {args.book})\n")
-            
-            # Find similar books
-            similar_books = recommend_similar_books(
-                args.book, 
-                model_path=args.model_path, 
+            recommendations_df = recommend_for_user(
+                user_id=args.user_id,
+                model_type=args.model,
                 num_recommendations=args.num,
                 data_dir=args.data_dir
             )
             
-            print_recommendations(similar_books)
-        
-        logger.info("predict_model.py completed successfully")
-        return 0
-        
-    except Exception as e:
-        logger.error(f"Unhandled exception in main: {e}")
-        logger.debug(traceback.format_exc())
+            if recommendations_df.empty:
+                logger.error(f"No recommendations found for user {args.user_id}")
+                print(f"No recommendations found for user {args.user_id}. The user may not exist in the training data.")
+                return 1
+                
+            print_recommendations(
+                recommendations_df,
+                header=f"Recommendations for User {args.user_id} (Using {args.model} Model):"
+            )
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error generating recommendations: {e}")
+            logger.debug(traceback.format_exc())
+            print(f"Error generating recommendations: {e}")
+            return 1
+            
+    elif args.command == 'book':
+        try:
+            logger.info(f"Finding similar books to book {args.book_id} using {args.model} model")
+            
+            similar_books_df = recommend_similar_books(
+                book_id=args.book_id,
+                model_type=args.model,
+                num_recommendations=args.num,
+                data_dir=args.data_dir
+            )
+            
+            if similar_books_df.empty:
+                logger.error(f"No similar books found for book {args.book_id}")
+                print(f"No similar books found for book {args.book_id}. The book may not exist in the training data.")
+                return 1
+                
+            print_recommendations(
+                similar_books_df,
+                header=f"Books Similar to Book ID {args.book_id} (Using {args.model} Model):"
+            )
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Error finding similar books: {e}")
+            logger.debug(traceback.format_exc())
+            print(f"Error finding similar books: {e}")
+            return 1
+    else:
+        parser.print_help()
         return 1
 
 

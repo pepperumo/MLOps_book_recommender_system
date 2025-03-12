@@ -1,23 +1,84 @@
 version: '3.8'
 
 services:
-  book-recommender-api:
+  data-retrieval:
     build:
       context: .
-      dockerfile: src/api/Dockerfile
-    ports: 
-      - "8000:8000"
+      dockerfile: docker/data-retrieval/Dockerfile
     volumes:
-      - ./models:/app/models
       - ./data:/app/data
-      - ./logs:/app/logs
+    networks:
+      - recommender-network
     environment:
-      - API_KEY=your-secret-api-key
-      - PYTHONPATH=/app
-    restart: unless-stopped
+      - PYTHONUNBUFFERED=1
+    command: ["keep-alive"]  # Keep container running
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "test", "-f", "/app/data/raw/retrieval_complete"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
+
+  data-ingestion:
+    build:
+      context: .
+      dockerfile: docker/data-ingestion/Dockerfile
+    volumes:
+      - ./data:/app/data
+    networks:
+      - recommender-network
+    depends_on:
+      data-retrieval:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["keep-alive"]  # Keep container running
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/data/ingestion_complete"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  model-training:
+    build:
+      context: .
+      dockerfile: docker/model-training/Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    networks:
+      - recommender-network
+    depends_on:
+      data-ingestion:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["./entrypoint.sh", "keep-alive"]  # Modified to use entrypoint.sh explicitly
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/models/training_complete"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  prediction-api:
+    build:
+      context: .
+      dockerfile: docker/prediction-api/Dockerfile
+    volumes:
+      - ./data:/data
+      - ./models:/models
+    ports:
+      - "8000:8000"
+    networks:
+      - recommender-network
+    depends_on:
+      model-training:
+        condition: service_completed_successfully
+    environment:
+      - PYTHONUNBUFFERED=1
+
+networks:
+  recommender-network:
+    driver: bridge

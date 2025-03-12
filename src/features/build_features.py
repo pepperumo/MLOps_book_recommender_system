@@ -49,45 +49,58 @@ def read_ratings(data_dir: str = 'data/processed') -> Tuple[sp.csr_matrix, np.nd
         if not os.path.exists(ratings_file):
             logger.error(f"Ratings file not found: {ratings_file}")
             return sp.csr_matrix((0, 0)), np.array([]), np.array([])
+            
+        logger.info(f"Reading ratings from {ratings_file}")
+        ratings_df = pd.read_csv(ratings_file)
+        logger.info(f"Loaded ratings dataframe with shape {ratings_df.shape}")
         
-        df = pd.read_csv(ratings_file)
-        logger.info(f"Loaded ratings data with shape {df.shape}")
-        logger.debug(f"Ratings columns: {df.columns.tolist()}")
-        
-        # Check that required columns exist
-        if 'user_id' not in df.columns or 'book_id' not in df.columns or 'rating' not in df.columns:
-            logger.error("Required columns not found in ratings data")
+        # Check if we have the expected columns
+        if 'user_id' not in ratings_df.columns or 'book_id' not in ratings_df.columns:
+            logger.error(f"Missing required columns in {ratings_file}")
             return sp.csr_matrix((0, 0)), np.array([]), np.array([])
+            
+        if 'rating' not in ratings_df.columns:
+            # If no rating column, assume implicit ratings (all 1.0)
+            logger.warning(f"No rating column found in {ratings_file}, assuming implicit ratings")
+            ratings_df['rating'] = 1.0
         
         # Get unique user and book IDs
-        user_ids = df['user_id'].unique()
-        book_ids = df['book_id'].unique()
+        user_ids = ratings_df['user_id'].unique()
+        book_ids = ratings_df['book_id'].unique()
+        
         logger.info(f"Found {len(user_ids)} unique users and {len(book_ids)} unique books")
         
-        # Create ID mappings
-        user_id_map = {id: i for i, id in enumerate(user_ids)}
-        book_id_map = {id: i for i, id in enumerate(book_ids)}
+        # Create label encoders for user and book IDs
+        user_encoder = LabelEncoder().fit(user_ids)
+        book_encoder = LabelEncoder().fit(book_ids)
         
-        # Save ID mappings for later use
-        user_map_df = pd.DataFrame({
-            'user_id': list(user_id_map.keys()),
-            'user_id_encoded': list(user_id_map.values())
+        # Transform IDs to sequential integers starting from 0
+        ratings_df['user_id_encoded'] = user_encoder.transform(ratings_df['user_id'])
+        ratings_df['book_id_encoded'] = book_encoder.transform(ratings_df['book_id'])
+        
+        # Save the book ID mapping for later use in predictions
+        mapping_df = pd.DataFrame({
+            'book_id': book_ids,
+            'book_id_encoded': book_encoder.transform(book_ids)
         })
+        mapping_path = os.path.join(os.path.dirname(data_dir), 'processed', 'book_id_mapping.csv')
+        os.makedirs(os.path.dirname(mapping_path), exist_ok=True)
+        mapping_df.to_csv(mapping_path, index=False)
+        logger.info(f"Saved book ID mapping to {mapping_path}")
         
-        book_map_df = pd.DataFrame({
-            'book_id': list(book_id_map.keys()),
-            'book_id_encoded': list(book_id_map.values())
+        # Also save the user ID mapping
+        user_mapping_df = pd.DataFrame({
+            'user_id': user_ids,
+            'user_id_encoded': user_encoder.transform(user_ids)
         })
-        
-        # Save mappings
-        user_map_df.to_csv(os.path.join(data_dir, 'user_id_mapping.csv'), index=False)
-        book_map_df.to_csv(os.path.join(data_dir, 'book_id_mapping.csv'), index=False)
-        logger.info(f"Saved ID mappings to {data_dir}")
+        user_mapping_path = os.path.join(os.path.dirname(data_dir), 'processed', 'user_id_mapping.csv')
+        user_mapping_df.to_csv(user_mapping_path, index=False)
+        logger.info(f"Saved user ID mapping to {user_mapping_path}")
         
         # Map IDs to indices
-        rows = df['user_id'].map(user_id_map).values
-        cols = df['book_id'].map(book_id_map).values
-        ratings = df['rating'].values
+        rows = ratings_df['user_id_encoded'].values
+        cols = ratings_df['book_id_encoded'].values
+        ratings = ratings_df['rating'].values
         
         # Create sparse matrix
         user_item_matrix = sp.csr_matrix((ratings, (rows, cols)), 
@@ -238,7 +251,7 @@ def extract_book_features(data_dir: str = 'data/processed',
         output_dir = os.path.join('data', 'features')
         os.makedirs(output_dir, exist_ok=True)
         vocab_file = os.path.join(output_dir, f'tfidf_vocabulary_{timestamp}.csv')
-        vocab_df.to_csv(vocab_file, index=False)
+        vocab_df.to_csv(vocab_file, index=False, encoding='utf-8')
         logger.info(f"Saved TF-IDF vocabulary to {vocab_file}")
         
         return tfidf_matrix, tfidf_feature_names.tolist(), book_ids
@@ -564,7 +577,7 @@ def main(data_dir: str = 'data', min_df: int = 5, max_df: float = 0.8) -> int:
                    book_feature_matrix)
         
         # Save feature names
-        with open(os.path.join(features_dir, 'feature_names.txt'), 'w') as f:
+        with open(os.path.join(features_dir, 'feature_names.txt'), 'w', encoding='utf-8') as f:
             f.write('\n'.join(feature_names))
         
         # Save book IDs if they match between ratings and features
@@ -600,7 +613,7 @@ def main(data_dir: str = 'data', min_df: int = 5, max_df: float = 0.8) -> int:
         
         summary_df = pd.DataFrame([summary])
         summary_file = os.path.join(features_dir, f'features_summary_{timestamp}.csv')
-        summary_df.to_csv(summary_file, index=False)
+        summary_df.to_csv(summary_file, index=False, encoding='utf-8')
         logger.info(f"Saved features summary to {summary_file}")
         
         return 0
