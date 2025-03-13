@@ -86,9 +86,13 @@ target/
 
 # Mypy cache
 .mypy_cache/
-/models
-/data
-/results
+# Exclude data directories but include their .dvc files
+/models/**
+!/models/**/*.dvc
+/data/**
+!/data/**/*.dvc
+/results/**
+!/results/**/*.dvc
 
 # DVC storage
 dvc-storage/
