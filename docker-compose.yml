@@ -54,7 +54,8 @@ services:
         condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["./entrypoint.sh", "keep-alive"]  # Modified to use entrypoint.sh explicitly
+    # Using entrypoint.sh which should call process_data.py instead of make_dataset.py
+    command: ["./entrypoint.sh", "keep-alive"]
     healthcheck:
       test: ["CMD", "test", "-f", "/app/models/training_complete"]
       interval: 30s
@@ -78,6 +79,34 @@ services:
         condition: service_completed_successfully
     environment:
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  streamlit-ui:
+    build:
+      context: ./streamlit
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    networks:
+      - recommender-network
+    depends_on:
+      prediction-api:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - API_BASE_URL=http://prediction-api:8000
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
 
 networks:
   recommender-network:
