@@ -49,7 +49,7 @@ except ImportError:
             sys.exit(1)
 
 
-def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFrame:
+def get_book_metadata(book_ids: List[int], data_dir: str = 'data', save_to_csv: bool = False) -> pd.DataFrame:
     """
     Get metadata for books given their IDs.
     
@@ -59,6 +59,8 @@ def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFra
         List of book IDs to get metadata for
     data_dir : str
         Path to the data directory
+    save_to_csv : bool
+        Whether to save the metadata to a CSV file
         
     Returns
     -------
@@ -146,12 +148,13 @@ def get_book_metadata(book_ids: List[int], data_dir: str = 'data') -> pd.DataFra
             missing_ids = set(book_ids) - set(result_df['book_id'])
             logger.warning(f"Could not find metadata for {len(missing_ids)} books: {list(missing_ids)}")
         
-        # Save metadata to CSV for analysis
-        output_dir = os.path.join(data_dir, 'processed')
-        os.makedirs(output_dir, exist_ok=True)
-        metadata_file = os.path.join(output_dir, f'book_metadata_{timestamp}.csv')
-        result_df.to_csv(metadata_file, index=False)
-        logger.info(f"Saved book metadata to {metadata_file}")
+        # Save metadata to CSV only if requested
+        if save_to_csv:
+            output_dir = os.path.join(data_dir, 'processed')
+            os.makedirs(output_dir, exist_ok=True)
+            metadata_file = os.path.join(output_dir, f'book_metadata_{timestamp}.csv')
+            result_df.to_csv(metadata_file, index=False)
+            logger.info(f"Saved book metadata to {metadata_file}")
     else:
         logger.warning(f"Could not find metadata for any of the {len(book_ids)} requested books")
     
@@ -484,7 +487,7 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
             
             # Get metadata for these additional books
             if new_popular_ids:
-                additional_df = get_book_metadata(new_popular_ids, data_dir)
+                additional_df = get_book_metadata(new_popular_ids, data_dir=data_dir)
                 
                 if not additional_df.empty:
                     # Add rank starting from where we left off
@@ -522,7 +525,7 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
 
 
 def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
-                           num_recommendations: int = 5, data_dir: str = 'data') -> pd.DataFrame:
+                           num_recommendations: int = 5, data_dir: str = 'data', save_results: bool = False) -> pd.DataFrame:
     """
     Generate similar book recommendations for a specific book.
     
@@ -536,6 +539,8 @@ def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
         Number of recommendations to generate
     data_dir : str
         Path to the data directory
+    save_results : bool
+        Whether to save the results to a CSV file
         
     Returns
     -------
@@ -574,6 +579,13 @@ def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
         source_book_df = get_book_metadata([book_id], data_dir=data_dir)
         if not source_book_df.empty:
             logger.info(f"Source book: {source_book_df.iloc[0]['title']} by {source_book_df.iloc[0]['authors']}")
+        
+        if save_results:
+            output_dir = os.path.join(data_dir, 'processed')
+            os.makedirs(output_dir, exist_ok=True)
+            similar_books_file = os.path.join(output_dir, f'similar_books_{book_id}_{timestamp}.csv')
+            similar_books_df.to_csv(similar_books_file, index=False)
+            logger.info(f"Saved similar books to {similar_books_file}")
         
         return similar_books_df
         
@@ -703,7 +715,8 @@ def main(args: Optional[List[str]] = None) -> int:
                     book_id=book_id,
                     model_type='content',
                     num_recommendations=parsed_args.num,
-                    data_dir=parsed_args.data_dir
+                    data_dir=parsed_args.data_dir,
+                    save_results=False
                 )
                 print_recommendations(similar_books_df, f"Similar Books to Book ID {book_id} (Content-Based):")
                 
@@ -741,7 +754,8 @@ def main(args: Optional[List[str]] = None) -> int:
                 book_id=book_id,
                 model_type=parsed_args.model_type,
                 num_recommendations=parsed_args.num,
-                data_dir=parsed_args.data_dir
+                data_dir=parsed_args.data_dir,
+                save_results=False
             )
             
             # Print similar books

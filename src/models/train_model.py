@@ -17,6 +17,7 @@ import json
 import time
 import traceback
 import argparse
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union, Any
@@ -25,6 +26,19 @@ from typing import List, Dict, Tuple, Optional, Union, Any
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if project_root not in sys.path:
     sys.path.append(project_root)
+
+# Import MLflow utilities
+try:
+    import mlflow
+    import dagshub
+    from src.models.mlflow_utils import (
+        setup_mlflow, log_params_from_model, log_metrics_safely,
+        log_model_version_as_tag, get_dagshub_url
+    )
+    MLFLOW_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: MLflow integration not available: {e}")
+    MLFLOW_AVAILABLE = False
 
 # Import from model_utils
 try:
@@ -57,6 +71,45 @@ logging.basicConfig(
 logger = logging.getLogger('train_model')
 
 
+def load_config(config_path="config/model_params.yaml"):
+    """
+    Load model configuration from YAML file
+    
+    Parameters
+    ----------
+    config_path : str
+        Path to the YAML configuration file
+        
+    Returns
+    -------
+    dict
+        Configuration dictionary with model parameters
+    """
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        logger.info(f"Loaded configuration from {config_path}")
+        return config
+    except Exception as e:
+        logger.error(f"Error loading config from {config_path}: {e}")
+        logger.info("Using default configuration")
+        return {
+            "collaborative": {
+                "n_neighbors": 20,
+                "max_rated_items": 50,
+                "similarity_metric": "cosine",
+                "algorithm": "brute",
+                "n_jobs": -1,
+                "k_values": [5, 10, 20],
+                "eval_sample_size": 50
+            },
+            "data": {
+                "features_dir": "data/features",
+                "output_dir": "models"
+            }
+        }
+
+
 ###################################################
 # Collaborative Recommender - main model class     #
 ###################################################
@@ -72,7 +125,10 @@ class CollaborativeRecommender(BaseRecommender):
                  user_item_matrix: Optional[sp.csr_matrix] = None,
                  book_ids: Optional[np.ndarray] = None,
                  n_neighbors: int = 20,
-                 max_rated_items: int = 50):
+                 max_rated_items: int = 50,
+                 similarity_metric: str = "cosine",
+                 algorithm: str = "brute",
+                 n_jobs: int = -1):
         """
         Initialize the collaborative filtering recommender system.
         
@@ -86,15 +142,35 @@ class CollaborativeRecommender(BaseRecommender):
             Number of neighbors to consider for recommendations
         max_rated_items : int, optional
             Maximum number of user-rated items to consider when generating recommendations
+        similarity_metric : str, optional
+            Metric to use for similarity calculation (e.g., 'cosine', 'euclidean')
+        algorithm : str, optional
+            Algorithm for nearest neighbors search (e.g., 'brute', 'kd_tree')
+        n_jobs : int, optional
+            Number of jobs to run in parallel. -1 means using all processors
         """
         super().__init__()
         self.user_item_matrix = user_item_matrix
         self.book_ids = book_ids
         self.n_neighbors = n_neighbors
         self.max_rated_items = max_rated_items
+        self.similarity_metric = similarity_metric
+        self.algorithm = algorithm
+        self.n_jobs = n_jobs
         self.item_nn_model = None
         self.item_similarity_matrix = None
         self.book_id_to_index = {}
+        
+        # Store hyperparameters in a params dictionary for MLflow tracking
+        self.params = {
+            "n_neighbors": n_neighbors,
+            "max_rated_items": max_rated_items,
+            "model_type": "collaborative",
+            "similarity_metric": similarity_metric,
+            "algorithm": algorithm,
+            "n_jobs": n_jobs,
+            "training_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
         if self.book_ids is not None:
             # Create mapping from book ID to matrix index
@@ -123,13 +199,19 @@ class CollaborativeRecommender(BaseRecommender):
         # Convert to CSR for efficient row slicing
         self.user_item_matrix = sp.csr_matrix(self.user_item_matrix)
         
+        # Track matrix shape in params
+        self.params["user_item_matrix_shape"] = f"{self.user_item_matrix.shape[0]}x{self.user_item_matrix.shape[1]}"
+        self.params["num_users"] = self.user_item_matrix.shape[0]
+        self.params["num_items"] = self.user_item_matrix.shape[1]
+        self.params["matrix_density"] = float(self.user_item_matrix.nnz / (self.user_item_matrix.shape[0] * self.user_item_matrix.shape[1]))
+        
         # Build item-item similarity model
         logger.info("Building item similarity model")
         self.item_nn_model = NearestNeighbors(
-            metric='cosine',
-            algorithm='brute',
+            metric=self.similarity_metric,
+            algorithm=self.algorithm,
             n_neighbors=self.n_neighbors + 1,  # +1 because it will include the item itself
-            n_jobs=-1  # Use all available cores
+            n_jobs=self.n_jobs  # Use all available cores
         )
         self.item_nn_model.fit(self.user_item_matrix.T.toarray())
         
@@ -305,85 +387,170 @@ class CollaborativeRecommender(BaseRecommender):
 # Main Training Function                           #
 ###################################################
 
-def train_model(eval_model=True):
+def train_model(config_path="config/model_params.yaml", model_version="collaborative"):
     """
-    Train the collaborative filtering model.
+    Train the collaborative filtering model using parameters from config file.
     
     Parameters
     ----------
-    eval_model : bool
-        Whether to evaluate the model after training
+    config_path : str
+        Path to the YAML configuration file
+    model_version : str
+        Which model configuration to use from the YAML file
         
     Returns
     -------
-    tuple
-        (collaborative_model, evaluation_results)
+    CollaborativeRecommender
+        Trained collaborative filtering model
     """
     try:
+        # Load configuration
+        config = load_config(config_path)
+        model_config = config.get(model_version, config.get("collaborative", {}))
+        data_config = config.get("data", {})
+        
+        # Extract parameters
+        n_neighbors = model_config.get("n_neighbors", 20)
+        max_rated_items = model_config.get("max_rated_items", 50)
+        similarity_metric = model_config.get("similarity_metric", "cosine")
+        algorithm = model_config.get("algorithm", "brute")
+        n_jobs = model_config.get("n_jobs", -1)
+        features_dir = data_config.get("features_dir", "data/features")
+        output_dir = data_config.get("output_dir", "models")
+        
+        # Log configuration
+        logger.info(f"Training model with version: {model_version}")
+        logger.info(f"Parameters: n_neighbors={n_neighbors}, max_rated_items={max_rated_items}")
+        logger.info(f"Algorithm: {algorithm}, Similarity: {similarity_metric}")
+        
         # Load data
         logger.info("Loading data for model training...")
-        user_item_matrix, book_ids = load_data(features_dir='data/features')
+        user_item_matrix, book_ids = load_data(features_dir=features_dir)
         
         if user_item_matrix is None or book_ids is None:
             logger.error("Failed to load required data. Please check the data files.")
-            return None, {}
+            return None
         
         # Create and train the collaborative model
         logger.info("Creating and training collaborative filtering model...")
         collaborative_model = CollaborativeRecommender(
             user_item_matrix=user_item_matrix,
             book_ids=book_ids,
-            n_neighbors=20
+            n_neighbors=n_neighbors,
+            max_rated_items=max_rated_items,
+            similarity_metric=similarity_metric,
+            algorithm=algorithm,
+            n_jobs=n_jobs
         )
+        
+        # Update params with configuration info
+        collaborative_model.params.update({
+            "model_version": model_version,
+            "config_file": config_path
+        })
         
         collaborative_model.fit()
         
         # Save the trained model
-        model_dir = 'models'
-        os.makedirs(model_dir, exist_ok=True)
-        model_path = os.path.join(model_dir, 'collaborative.pkl')
+        os.makedirs(output_dir, exist_ok=True)
+        model_path = os.path.join(output_dir, f'{model_version}.pkl')
         
         logger.info(f"Saving trained model to {model_path}")
         collaborative_model.save(model_path)
         
-        # Evaluate the model if requested
-        evaluation_results = {}
-        if eval_model:
-            logger.info("Evaluating model...")
-            
-            # Import here to avoid circular imports
-            from src.models.evaluate_model import run_evaluation
-            
-            evaluation_results = run_evaluation(collaborative_model)
-            
-        return collaborative_model, evaluation_results
+        return collaborative_model
         
     except Exception as e:
         logger.error(f"Error during model training: {str(e)}")
         logger.error(traceback.format_exc())
-        return None, {}
+        return None
 
 
-###################################################
-# Command-line interface                           #
-###################################################
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train a book recommender model')
-    parser.add_argument('--eval', action='store_true', help='Evaluate the model after training')
-    parser.add_argument('--features-dir', type=str, default='data/features',
-                        help='Directory containing feature files')
+def main():
+    """
+    Main function for the model training script.
+    """
+    parser = argparse.ArgumentParser(description='Train collaborative filtering model for book recommendations')
+    parser.add_argument('--config', type=str, default='config/model_params.yaml',
+                        help='Path to the configuration YAML file')
+    parser.add_argument('--model-version', type=str, default='collaborative',
+                        help='Model version/configuration to use from the YAML file')
+    parser.add_argument('--output-dir', type=str, default=None,
+                        help='Override the output directory for model saving')
+    parser.add_argument('--disable-mlflow', action='store_true',
+                        help='Disable MLflow logging')
     
     args = parser.parse_args()
     
-    # Train the model
-    model, results = train_model(eval_model=args.eval)
+    # Override MLFLOW_AVAILABLE if requested
+    global MLFLOW_AVAILABLE
+    if args.disable_mlflow:
+        MLFLOW_AVAILABLE = False
     
-    if model is not None:
-        logger.info("Model training completed successfully.")
+    try:
+        # Set up MLflow if available
+        if MLFLOW_AVAILABLE:
+            try:
+                # Setup MLflow
+                setup_mlflow(experiment_name=f"collaborative_model_{args.model_version}")
+                logger.info(f"MLflow tracking is enabled. Visit {get_dagshub_url()} to view experiments.")
+                
+                with mlflow.start_run(run_name=f"{args.model_version}_training"):
+                    # Train the model
+                    model = train_model(
+                        config_path=args.config,
+                        model_version=args.model_version
+                    )
+                    
+                    if model:
+                        # Log parameters from model
+                        log_params_from_model(model)
+                        
+                        # Log model artifacts
+                        model_path = os.path.join('models', f"{args.model_version}.pkl")
+                        mlflow.log_artifact(model_path, "model")
+                        
+                        # Save model config for reproducibility
+                        model_config_path = os.path.join('models', f"{args.model_version}_config.json")
+                        os.makedirs(os.path.dirname(model_config_path), exist_ok=True)
+                        
+                        with open(model_config_path, 'w') as f:
+                            json.dump(model.params, f, indent=2)
+                            
+                        mlflow.log_artifact(model_config_path, "model_config")
+                        
+                        # Log model version as a tag
+                        log_model_version_as_tag(args.model_version)
+            except Exception as e:
+                logger.warning(f"Error setting up MLflow: {e}")
+                MLFLOW_AVAILABLE = False
+                model = train_model(
+                    config_path=args.config,
+                    model_version=args.model_version
+                )
+        else:
+            # Train without MLflow
+            model = train_model(
+                config_path=args.config,
+                model_version=args.model_version
+            )
         
-        if args.eval and results:
-            logger.info(f"Evaluation results: {results}")
-    else:
-        logger.error("Model training failed.")
-        sys.exit(1)
+        if model:
+            # Print success message
+            print("\nTraining completed successfully!")
+            print(f"\nTrained model saved to: models/{args.model_version}.pkl")
+            print("\nTo evaluate this model, run:")
+            print(f"python src/models/evaluate_model.py --model-path models/{args.model_version}.pkl")
+            return 0
+        else:
+            logger.error("Model training failed.")
+            return 1
+    
+    except Exception as e:
+        logger.error(f"Error in main: {e}")
+        logger.debug(traceback.format_exc())
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
