@@ -302,10 +302,6 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
             if recall_key in results:
                 print(f"Recall@{k}:    {results[recall_key]:.4f}")
         
-        print("\nRaw metrics for reference:")
-        for metric, value in results.items():
-            print(f"{metric}: {value:.4f}")
-            
         return results
     
     except Exception as e:
