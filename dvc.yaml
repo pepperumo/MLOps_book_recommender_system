@@ -18,7 +18,7 @@ stages:
           persist: true
       - data/processed/merged_test.csv:
           persist: true
-      - data/processed/books_metadata.csv:
+      - data/processed/books.csv:
           persist: true
       
   build_features:
@@ -26,7 +26,7 @@ stages:
     deps:
       - src/features/build_features.py
       - data/processed/merged_train.csv
-      - data/processed/books_metadata.csv
+      - data/processed/books.csv
     outs:
       - data/features/user_item_matrix.npz:
           persist: true
@@ -51,5 +51,5 @@ stages:
       - models/collaborative.pkl
       - data/processed/merged_test.csv
     metrics:
-      - data/results/evaluation_results.csv:
+      - data/results:
           cache: false
