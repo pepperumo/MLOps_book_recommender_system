@@ -7,6 +7,12 @@ stages:
       hash: md5
       md5: 8be5dd91f1c815c403e2f6bb37506733
       size: 25888
+    outs:
+    - path: data/raw
+      hash: md5
+      md5: 8658ca6f418c4118dd9bc3766dd8860c.dir
+      size: 9121099
+      nfiles: 2
   process_data:
     cmd: python src/data/process_data.py
     deps:

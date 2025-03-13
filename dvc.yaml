@@ -4,33 +4,52 @@ stages:
     cmd: python src/data/retrieve_raw_data.py
     deps:
       - src/data/retrieve_raw_data.py
-    # We don't specify outs since data is already tracked by data.dvc
+    outs:
+      - data/raw:
+          persist: true
       
   process_data:
     cmd: python src/data/process_data.py
     deps:
       - src/data/process_data.py
-      # We rely on data.dvc for tracking the raw data
-    # We don't specify outs since processed data is already tracked by data.dvc
+      - data/raw
+    outs:
+      - data/processed/merged_train.csv:
+          persist: true
+      - data/processed/merged_test.csv:
+          persist: true
+      - data/processed/books_metadata.csv:
+          persist: true
       
   build_features:
     cmd: python src/features/build_features.py
     deps:
       - src/features/build_features.py
-      # We rely on data.dvc for tracking the processed data
-    # We don't specify outs since features are already tracked by data.dvc
+      - data/processed/merged_train.csv
+      - data/processed/books_metadata.csv
+    outs:
+      - data/features/user_item_matrix.npz:
+          persist: true
+      - data/features/book_ids.npy:
+          persist: true
       
   train_model:
     cmd: python src/models/train_model.py --config config/model_params.yaml
     deps:
       - src/models/train_model.py
       - config/model_params.yaml
-      # We rely on data.dvc for tracking the features
-    # We don't specify outs since models are already tracked by models.dvc
+      - data/features/user_item_matrix.npz
+      - data/features/book_ids.npy
+    outs:
+      - models/collaborative.pkl:
+          persist: true
       
   evaluate_model:
     cmd: python src/models/evaluate_model.py --model-path models/collaborative.pkl
     deps:
       - src/models/evaluate_model.py
-      # Models are tracked by models.dvc
-      # Test data is tracked by data.dvc
+      - models/collaborative.pkl
+      - data/processed/merged_test.csv
+    metrics:
+      - data/results/evaluation_results.csv:
+          cache: false
