@@ -71,7 +71,8 @@ class CollaborativeRecommender(BaseRecommender):
     def __init__(self, 
                  user_item_matrix: Optional[sp.csr_matrix] = None,
                  book_ids: Optional[np.ndarray] = None,
-                 n_neighbors: int = 20):
+                 n_neighbors: int = 20,
+                 max_rated_items: int = 50):
         """
         Initialize the collaborative filtering recommender system.
         
@@ -83,9 +84,16 @@ class CollaborativeRecommender(BaseRecommender):
             Array of book IDs corresponding to the matrices
         n_neighbors : int, optional
             Number of neighbors to consider for recommendations
+        max_rated_items : int, optional
+            Maximum number of user-rated items to consider when generating recommendations
         """
-        super().__init__(user_item_matrix, book_ids, n_neighbors)
+        super().__init__()
+        self.user_item_matrix = user_item_matrix
+        self.book_ids = book_ids
+        self.n_neighbors = n_neighbors
+        self.max_rated_items = max_rated_items
         self.item_nn_model = None
+        self.item_similarity_matrix = None
         self.book_id_to_index = {}
         
         if self.book_ids is not None:
@@ -96,48 +104,72 @@ class CollaborativeRecommender(BaseRecommender):
         """
         Train the collaborative filtering model.
         
-        Builds nearest neighbors model for item-based collaborative filtering.
+        Builds nearest neighbors model for item-based collaborative filtering
+        and pre-computes item-item similarity matrix.
         
         Returns
         -------
         self
         """
-        if self.user_item_matrix is None:
-            logger.error("Cannot train model: user_item_matrix is not initialized")
+        logger.info("Training item-based collaborative filtering model")
+        
+        if self.user_item_matrix is None or self.book_ids is None:
+            logger.error("Cannot train model: missing user_item_matrix or book_ids")
             return self
         
-        try:
-            start_time = time.time()
-            logger.info("Training collaborative filtering model...")
+        # Train nearest neighbors model
+        logger.info(f"Building nearest neighbors model with n_neighbors={self.n_neighbors}")
+        
+        # Convert to CSR for efficient row slicing
+        self.user_item_matrix = sp.csr_matrix(self.user_item_matrix)
+        
+        # Build item-item similarity model
+        logger.info("Building item similarity model")
+        self.item_nn_model = NearestNeighbors(
+            metric='cosine',
+            algorithm='brute',
+            n_neighbors=self.n_neighbors + 1,  # +1 because it will include the item itself
+            n_jobs=-1  # Use all available cores
+        )
+        self.item_nn_model.fit(self.user_item_matrix.T.toarray())
+        
+        # Pre-compute item similarity matrix
+        logger.info("Pre-computing item similarity matrix")
+        num_items = self.user_item_matrix.shape[1]
+        
+        # For large datasets, compute similarities in batches
+        batch_size = 1000
+        self.item_similarity_matrix = {}
+        
+        for i in range(0, num_items, batch_size):
+            batch_end = min(i + batch_size, num_items)
+            batch_items = list(range(i, batch_end))
             
-            # Build item-item similarity model
-            # Transpose matrix to compute item-item similarity
-            item_item_matrix = self.user_item_matrix.T.tocsr()
+            # If batch is empty, skip
+            if not batch_items:
+                continue
+                
+            # Get item vectors for this batch
+            item_vectors = self.user_item_matrix.T[batch_items].toarray()
             
-            # Save the matrix shape for logging
-            n_books, n_users = item_item_matrix.shape
-            logger.info(f"User-item matrix shape: {self.user_item_matrix.shape} (users x books)")
-            logger.info(f"Item-item matrix shape: {item_item_matrix.shape} (books x users)")
+            # Find k+1 nearest neighbors for each item (including itself)
+            distances, indices = self.item_nn_model.kneighbors(
+                item_vectors, 
+                n_neighbors=self.n_neighbors + 1
+            )
             
-            # Train NearestNeighbors model for item similarity
-            self.item_nn_model = NearestNeighbors(
-                n_neighbors=min(self.n_neighbors + 1, n_books),  # +1 because it will include the item itself
-                metric='cosine',
-                algorithm='brute',
-                n_jobs=-1
-            ).fit(item_item_matrix)
-            
-            end_time = time.time()
-            logger.info(f"Model training completed in {end_time - start_time:.2f} seconds")
-            
-            return self
-            
-        except Exception as e:
-            logger.error(f"Error during model training: {str(e)}")
-            logger.error(traceback.format_exc())
-            return self
-    
-    def recommend_for_user(self, user_id: int, n_recommendations: int = 10):
+            # Store similarities (1 - distance) for each item
+            for j, (item_idx, item_distances, item_indices) in enumerate(zip(batch_items, distances, indices)):
+                # Skip the first result (the item itself)
+                self.item_similarity_matrix[item_idx] = {
+                    'indices': item_indices[1:],  # Skip the item itself (first element)
+                    'similarities': 1 - item_distances[1:]  # Convert distances to similarities
+                }
+        
+        logger.info("Model training completed")
+        return self
+        
+    def recommend_for_user(self, user_id: int, n_recommendations: int = 10) -> List[int]:
         """
         Generate book recommendations for a user based on collaborative filtering.
         
@@ -153,75 +185,70 @@ class CollaborativeRecommender(BaseRecommender):
         list
             List of recommended book IDs
         """
-        if self.item_nn_model is None:
-            logger.error("Model not trained. Call fit() before making recommendations.")
-            return []
-            
-        if self.user_item_matrix is None:
-            logger.error("Cannot make recommendations: user_item_matrix is not initialized")
-            return []
-            
-        try:
-            # Check if user exists in the matrix
-            user_idx = None
-            # Get all users in user_item_matrix
-            user_indices = np.arange(self.user_item_matrix.shape[0])
-            
-            if user_id in user_indices:
-                user_idx = user_id
-            else:
-                logger.warning(f"User ID {user_id} not found in the matrix. Returning empty recommendations.")
+        # Convert user_id to matrix index if needed
+        user_idx = user_id
+        if hasattr(self, 'user_id_to_index'):
+            if user_id not in self.user_id_to_index:
+                logger.warning(f"User {user_id} not found in training data")
                 return []
-                
-            # Get user's profile (list of books they've rated)
-            user_profile = self.user_item_matrix[user_idx].toarray().flatten()
-            
-            # Check if user has rated any books
-            if user_profile.sum() == 0:
-                logger.warning(f"User {user_id} has no ratings. Using popularity-based recommendations.")
-                # Fallback to overall popularity
-                item_popularity = self.user_item_matrix.sum(axis=0).A1
-                top_items = np.argsort(item_popularity)[::-1][:n_recommendations]
-                return [int(self.book_ids[i]) for i in top_items]
-                
-            # Get indices of books the user has already interacted with
-            already_interacted = set(np.where(user_profile > 0)[0])
-            
-            # Use user profile to generate recommendations
-            # Start with all books user has rated
-            candidate_scores = {}
-            
-            for book_idx in already_interacted:
-                # Use our item-item similarity model to find similar books
-                distances, indices = self.item_nn_model.kneighbors(
-                    self.user_item_matrix.T[book_idx].toarray().reshape(1, -1),
-                    n_neighbors=self.n_neighbors
-                )
-                
-                # Convert distances to similarities (1 - distance)
-                similarities = 1 - distances.flatten()
-                
-                # Score similar books based on similarity
-                for sim, idx in zip(similarities, indices.flatten()):
-                    if idx not in already_interacted:
-                        if idx not in candidate_scores:
-                            candidate_scores[idx] = 0
-                        # Weight similarity by user's rating
-                        candidate_scores[idx] += sim * user_profile[book_idx]
-            
-            # Sort candidates by score
-            sorted_candidates = sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
-            
-            # Return top N book IDs
-            recommended_indices = [idx for idx, _ in sorted_candidates[:n_recommendations]]
-            recommended_book_ids = [int(self.book_ids[idx]) for idx in recommended_indices]
-            
-            return recommended_book_ids
-            
-        except Exception as e:
-            logger.error(f"Error generating recommendations for user {user_id}: {str(e)}")
-            logger.error(traceback.format_exc())
+            user_idx = self.user_id_to_index[user_id]
+        
+        # Get user profile
+        if user_idx >= self.user_item_matrix.shape[0]:
+            logger.warning(f"User index {user_idx} out of bounds")
             return []
+            
+        user_profile = self.user_item_matrix[user_idx].toarray().flatten()
+        
+        # If user has no ratings, use popularity-based recommendations
+        if np.sum(user_profile) == 0:
+            logger.warning(f"User {user_id} has no ratings. Using popularity-based recommendations.")
+            # Fallback to overall popularity
+            item_popularity = self.user_item_matrix.sum(axis=0).A1
+            top_items = np.argsort(item_popularity)[::-1][:n_recommendations]
+            return [int(self.book_ids[i]) for i in top_items]
+            
+        # Get indices of books the user has already interacted with
+        already_interacted = np.where(user_profile > 0)[0]
+        
+        # Limit the number of user-rated items we consider to improve performance
+        if len(already_interacted) > self.max_rated_items:
+            # Sort by rating and take top rated items
+            top_ratings_idx = np.argsort(user_profile[already_interacted])[::-1][:self.max_rated_items]
+            already_interacted = already_interacted[top_ratings_idx]
+        
+        # Convert to set for faster lookups
+        already_interacted_set = set(already_interacted)
+        
+        # Use user profile to generate recommendations
+        candidate_scores = {}
+        
+        for book_idx in already_interacted:
+            # Skip if this book doesn't have pre-computed similarities
+            if book_idx not in self.item_similarity_matrix:
+                continue
+                
+            # Get pre-computed similar items
+            similar_items = self.item_similarity_matrix[book_idx]
+            item_indices = similar_items['indices']
+            item_similarities = similar_items['similarities']
+            
+            # Score similar books based on similarity
+            for idx, sim in zip(item_indices, item_similarities):
+                if idx not in already_interacted_set:
+                    if idx not in candidate_scores:
+                        candidate_scores[idx] = 0
+                    # Weight similarity by user's rating
+                    candidate_scores[idx] += sim * user_profile[book_idx]
+        
+        # Sort candidates by score
+        sorted_candidates = sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Return top N book IDs
+        recommended_indices = [idx for idx, _ in sorted_candidates[:n_recommendations]]
+        recommended_book_ids = [int(self.book_ids[i]) for i in recommended_indices]
+        
+        return recommended_book_ids
     
     def recommend_similar_books(self, book_id: int, n: int = 10):
         """

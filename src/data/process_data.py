@@ -151,9 +151,9 @@ def clean_book_data(df: pd.DataFrame) -> pd.DataFrame:
         if col in df_clean.columns:
             df_clean[col] = df_clean[col].fillna(0)
     
-    # Ensure image URLs are valid
-    df_clean['image_url'] = df_clean['image_url'].fillna('')
-    df_clean['small_image_url'] = df_clean['small_image_url'].fillna('')
+    # No need to validate image URLs since they come from Google Books API
+    if 'image_url' in df_clean.columns:
+        df_clean['image_url'] = df_clean['image_url'].fillna('')
     
     # Ensure book_id is integer type
     df_clean['book_id'] = df_clean['book_id'].astype(int)

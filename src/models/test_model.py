@@ -64,18 +64,24 @@ except ImportError:
             load_book_id_mapping
         )
     except ImportError:
-        # Add parent directory to path
+        import sys
+        import os
+        # Add the parent directory to the path to ensure we can import the modules
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.append(parent_dir)
-        from models.model_utils import BaseRecommender, load_data
-        from models.train_model import CollaborativeRecommender
-        from models.predict_model import (
-            recommend_for_user, 
-            recommend_similar_books,
-            load_recommender_model,
-            load_book_id_mapping
-        )
-        logger.warning("Using relative imports for prediction functions")
+        try:
+            from models.model_utils import BaseRecommender, load_data
+            from models.train_model import CollaborativeRecommender
+            from models.predict_model import (
+                recommend_for_user, 
+                recommend_similar_books,
+                load_recommender_model,
+                load_book_id_mapping
+            )
+            logger.info("Imported from models directory after adding parent dir to path")
+        except ImportError:
+            logger.error("Failed to import necessary modules. Please check your installation.")
+            sys.exit(1)
 
 # Define model type - collaborative only
 MODEL_TYPE = 'collaborative'
