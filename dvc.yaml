@@ -8,6 +8,8 @@ stages:
     outs:
       - data/raw:
           persist: true
+      - data/backup:
+          persist: true
       
   process_data:
     cmd: python src/data/process_data.py

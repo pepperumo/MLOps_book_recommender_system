@@ -8,19 +8,24 @@ stages:
       md5: 8be5dd91f1c815c403e2f6bb37506733
       size: 25888
     outs:
+    - path: data/backup
+      hash: md5
+      md5: e3a585e7817137cd63298d0fc7b3a47d.dir
+      size: 16716264
+      nfiles: 2
     - path: data/raw
       hash: md5
-      md5: 8658ca6f418c4118dd9bc3766dd8860c.dir
-      size: 9121099
-      nfiles: 2
+      md5: 362992055c544efb763e212e120adc03.dir
+      size: 9142194
+      nfiles: 3
   process_data:
     cmd: python src/data/process_data.py
     deps:
     - path: data/raw
       hash: md5
-      md5: 8658ca6f418c4118dd9bc3766dd8860c.dir
-      size: 9121099
-      nfiles: 2
+      md5: 362992055c544efb763e212e120adc03.dir
+      size: 9142194
+      nfiles: 3
     - path: src/data/process_data.py
       hash: md5
       md5: 7816efee98d7ac257833567ee2751262
@@ -28,40 +33,40 @@ stages:
     outs:
     - path: data/processed/books.csv
       hash: md5
-      md5: b2d45b08821aca6735f5857268ddafd6
-      size: 315151
+      md5: 632e84b06c8334ec85fd715690ef52ad
+      size: 316938
     - path: data/processed/merged_test.csv
       hash: md5
-      md5: a67bebd586a83e6844ded16ca83ae9d2
-      size: 109624372
+      md5: 7d8a4cdb480df5024cfeeaa6ac498ac7
+      size: 110370834
     - path: data/processed/merged_train.csv
       hash: md5
-      md5: a4dfa056ffc8f604c25a5c5b298b4914
-      size: 437631814
+      md5: 3d0cef5cbe9b2c860e2260dbd1d5375d
+      size: 442242949
   build_features:
     cmd: python src/features/build_features.py
     deps:
     - path: data/processed/books.csv
       hash: md5
-      md5: b2d45b08821aca6735f5857268ddafd6
-      size: 315151
+      md5: 632e84b06c8334ec85fd715690ef52ad
+      size: 316938
     - path: data/processed/merged_train.csv
       hash: md5
-      md5: a4dfa056ffc8f604c25a5c5b298b4914
-      size: 437631814
+      md5: 3d0cef5cbe9b2c860e2260dbd1d5375d
+      size: 442242949
     - path: src/features/build_features.py
       hash: md5
-      md5: 7129fda6375b6f8b553d5f14c521e4ba
-      size: 24899
+      md5: ba0f11bdc3c6a79cab717c6f6d645487
+      size: 7653
     outs:
     - path: data/features/book_ids.npy
       hash: md5
-      md5: ab0aed88a5968e3bc8382d736dbd401c
-      size: 3776
+      md5: bc007e6344c63045a1108c42baaa91d2
+      size: 3768
     - path: data/features/user_item_matrix.npz
       hash: md5
-      md5: b21a5eb1548def941d9f14268312319a
-      size: 643777
+      md5: aaeb585fb4668d81f257f83759c4055a
+      size: 643158
   train_model:
     cmd: python src/models/train_model.py --config config/model_params.yaml
     deps:
@@ -71,12 +76,12 @@ stages:
       size: 773
     - path: data/features/book_ids.npy
       hash: md5
-      md5: ab0aed88a5968e3bc8382d736dbd401c
-      size: 3776
+      md5: bc007e6344c63045a1108c42baaa91d2
+      size: 3768
     - path: data/features/user_item_matrix.npz
       hash: md5
-      md5: b21a5eb1548def941d9f14268312319a
-      size: 643777
+      md5: aaeb585fb4668d81f257f83759c4055a
+      size: 643158
     - path: src/models/train_model.py
       hash: md5
       md5: e960d9810b964dcd4d3d6e4afdc25f87
@@ -84,26 +89,25 @@ stages:
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: 249092fcec5d6b1723eb5c0b0b5ad209
-      size: 15025437
+      md5: 3dd33560500ee365782b36f55f143709
+      size: 15025172
   evaluate_model:
     cmd: python src/models/evaluate_model.py --model-path models/collaborative.pkl
     deps:
     - path: data/processed/merged_test.csv
       hash: md5
-      md5: a67bebd586a83e6844ded16ca83ae9d2
-      size: 109624372
+      md5: 7d8a4cdb480df5024cfeeaa6ac498ac7
+      size: 110370834
     - path: models/collaborative.pkl
       hash: md5
-      md5: 249092fcec5d6b1723eb5c0b0b5ad209
-      size: 15025437
+      md5: 3dd33560500ee365782b36f55f143709
+      size: 15025172
     - path: src/models/evaluate_model.py
       hash: md5
-      md5: 00cf4b0745f59a68d3c381ffb2a2d411
-      size: 17296
+      md5: ee65c78ac1cfebba384a5a236d755f57
+      size: 18267
     outs:
-    - path: data/results
+    - path: data/results/evaluation_results.csv
       hash: md5
-      md5: d2691833f994e30347413d53cd143121.dir
-      size: 206
-      nfiles: 1
+      md5: 2ac66478d32999aea902292198ecae01
+      size: 178
