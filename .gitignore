@@ -76,7 +76,6 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 
-
 # Mac OS-specific storage files
 .DS_Store
 
@@ -86,6 +85,8 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+# MLOps specific ignores
 # Exclude data directories but include their .dvc files
 /models/**
 !/models/**/*.dvc
@@ -94,10 +95,18 @@ target/
 /results/**
 !/results/**/*.dvc
 
-# DVC storage
+# DVC storage and files
 dvc-storage/
+.dvc/cache/
+.dvc/tmp/
+.dvc/plots/
+*.dvc.backup
 
-# DVC backup files
+# MLflow
+mlruns/
+
+# Logs
+logs/
 
 # Flask
 node_modules/

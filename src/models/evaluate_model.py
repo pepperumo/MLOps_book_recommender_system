@@ -180,9 +180,8 @@ def save_evaluation_results(evaluation_results: Dict[str, float],
         # Create results directory if it doesn't exist
         os.makedirs(results_dir, exist_ok=True)
         
-        # Get timestamp for filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(results_dir, f'evaluation_results_{timestamp}.csv')
+        # Use a fixed filename for better DVC tracking
+        results_file = os.path.join(results_dir, 'evaluation_results.csv')
         
         # Convert to DataFrame for easier saving
         results_df = pd.DataFrame()

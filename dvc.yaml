@@ -52,5 +52,5 @@ stages:
       - models/collaborative.pkl
       - data/processed/merged_test.csv
     metrics:
-      - data/results:
+      - data/results/evaluation_results.csv:
           cache: false
