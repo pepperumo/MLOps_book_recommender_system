@@ -1,0 +1,8 @@
+[core]
+    remote = origin
+['remote "dagshub"']
+    url = https://dagshub.com/pepperumo/MLOps_book_recommender_system.dvc
+['remote "origin"']
+    url = s3://dvc
+    endpointurl = https://dagshub.com/pepperumo/MLOps_book_recommender_system.s3
+
