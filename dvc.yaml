@@ -33,5 +33,3 @@ stages:
       - src/models/evaluate_model.py
       - models/collaborative.pkl
       - data
-    metrics:
-      - data/results/evaluation_results.csv
