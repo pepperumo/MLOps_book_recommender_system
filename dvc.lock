@@ -7,66 +7,30 @@ stages:
       hash: md5
       md5: 8be5dd91f1c815c403e2f6bb37506733
       size: 25888
-    outs:
-    - path: data/backup
-      hash: md5
-      md5: e3a585e7817137cd63298d0fc7b3a47d.dir
-      size: 16716264
-      nfiles: 2
-    - path: data/raw
-      hash: md5
-      md5: 362992055c544efb763e212e120adc03.dir
-      size: 9142194
-      nfiles: 3
   process_data:
     cmd: python src/data/process_data.py
     deps:
-    - path: data/raw
+    - path: data
       hash: md5
-      md5: 362992055c544efb763e212e120adc03.dir
-      size: 9142194
-      nfiles: 3
+      md5: 77296780bd9984cb90b9c9911ce3ba9a.dir
+      size: 1120974554
+      nfiles: 17
     - path: src/data/process_data.py
       hash: md5
       md5: 7816efee98d7ac257833567ee2751262
       size: 12605
-    outs:
-    - path: data/processed/books.csv
-      hash: md5
-      md5: 632e84b06c8334ec85fd715690ef52ad
-      size: 316938
-    - path: data/processed/merged_test.csv
-      hash: md5
-      md5: 7d8a4cdb480df5024cfeeaa6ac498ac7
-      size: 110370834
-    - path: data/processed/merged_train.csv
-      hash: md5
-      md5: 3d0cef5cbe9b2c860e2260dbd1d5375d
-      size: 442242949
   build_features:
     cmd: python src/features/build_features.py
     deps:
-    - path: data/processed/books.csv
+    - path: data
       hash: md5
-      md5: 632e84b06c8334ec85fd715690ef52ad
-      size: 316938
-    - path: data/processed/merged_train.csv
-      hash: md5
-      md5: 3d0cef5cbe9b2c860e2260dbd1d5375d
-      size: 442242949
+      md5: 2671d34b4bd1016db9243b33ed3263b2.dir
+      size: 1120974833
+      nfiles: 17
     - path: src/features/build_features.py
       hash: md5
       md5: ba0f11bdc3c6a79cab717c6f6d645487
       size: 7653
-    outs:
-    - path: data/features/book_ids.npy
-      hash: md5
-      md5: bc007e6344c63045a1108c42baaa91d2
-      size: 3768
-    - path: data/features/user_item_matrix.npz
-      hash: md5
-      md5: aaeb585fb4668d81f257f83759c4055a
-      size: 643158
   train_model:
     cmd: python src/models/train_model.py --config config/model_params.yaml
     deps:
@@ -74,14 +38,11 @@ stages:
       hash: md5
       md5: 0b39f71305d383e678ff93c6ab396885
       size: 773
-    - path: data/features/book_ids.npy
+    - path: data
       hash: md5
-      md5: bc007e6344c63045a1108c42baaa91d2
-      size: 3768
-    - path: data/features/user_item_matrix.npz
-      hash: md5
-      md5: aaeb585fb4668d81f257f83759c4055a
-      size: 643158
+      md5: 2671d34b4bd1016db9243b33ed3263b2.dir
+      size: 1120974833
+      nfiles: 17
     - path: src/models/train_model.py
       hash: md5
       md5: e960d9810b964dcd4d3d6e4afdc25f87
@@ -89,25 +50,21 @@ stages:
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: 3dd33560500ee365782b36f55f143709
-      size: 15025172
+      md5: e84e649cf7b3cf303c22e0df570a8289
+      size: 15017025
   evaluate_model:
     cmd: python src/models/evaluate_model.py --model-path models/collaborative.pkl
     deps:
-    - path: data/processed/merged_test.csv
+    - path: data
       hash: md5
-      md5: 7d8a4cdb480df5024cfeeaa6ac498ac7
-      size: 110370834
+      md5: 49e6dae1266b110ec4105036beb32de6.dir
+      size: 1120974847
+      nfiles: 17
     - path: models/collaborative.pkl
       hash: md5
-      md5: 3dd33560500ee365782b36f55f143709
-      size: 15025172
+      md5: e84e649cf7b3cf303c22e0df570a8289
+      size: 15017025
     - path: src/models/evaluate_model.py
       hash: md5
       md5: ee65c78ac1cfebba384a5a236d755f57
       size: 18267
-    outs:
-    - path: data/results/evaluation_results.csv
-      hash: md5
-      md5: 2ac66478d32999aea902292198ecae01
-      size: 178
