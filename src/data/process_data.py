@@ -345,6 +345,9 @@ def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processe
         merged_df = merge_and_prepare_data(books_df, ratings_df)
         logger.info(f"Merged data shape: {merged_df.shape}")
 
+        # Create output directory if it doesn't exist
+        os.makedirs(abs_output_filepath, exist_ok=True)
+
         # Save the merged dataset before splitting
         merged_filepath = os.path.join(abs_output_filepath, 'merged.csv')
         merged_df.to_csv(merged_filepath, index=False)
@@ -356,8 +359,7 @@ def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processe
         logger.info(f"Train data shape: {train_df.shape}")
         logger.info(f"Test data shape: {test_df.shape}")
         
-        # Create output directory if it doesn't exist
-        os.makedirs(abs_output_filepath, exist_ok=True)
+
         
         # Save data
         logger.info(f"Saving processed data to {abs_output_filepath}")

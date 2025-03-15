@@ -423,7 +423,7 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
                       n: int = 5, data_dir: str = 'data') -> pd.DataFrame:
     """
     Generate book recommendations for a specific user.
-    
+
     Parameters
     ----------
     user_id : int
@@ -434,7 +434,7 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
         Number of recommendations to generate
     data_dir : str
         Path to the data directory
-        
+
     Returns
     -------
     pandas.DataFrame
@@ -444,113 +444,113 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
     env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
     if env_data_dir:
         data_dir = env_data_dir
-    
+
     try:
         # Load the appropriate model
         recommender = load_recommender_model(model_type)
         
         if recommender is None:
             logger.error(f"Failed to load {model_type} recommender model")
-            # Fall back to popularity-based recommendations
-            logger.info("Falling back to popularity-based recommendations")
-            popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
-            return get_book_metadata(popular_book_ids, data_dir)
-        
+            return fallback_to_popular_books(user_id, n, data_dir)
+
         # Fetch more books than needed to ensure diversity (5x instead of 2x)
         logger.info(f"Getting recommendations for user {user_id} using {model_type} model")
         fetch_count = n * 5
         book_ids = recommender.recommend_for_user(user_id, n_recommendations=fetch_count)
-        
+
         # Handle case where we get no recommendations (cold start or user not in training data)
-        if not book_ids:
+        if not book_ids or not isinstance(book_ids, list):
             logger.warning(f"No recommendations found for user {user_id} using {model_type} model")
-            # Fall back to popularity-based recommendations
-            logger.info("Falling back to popularity-based recommendations")
-            book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
-        
+            return fallback_to_popular_books(user_id, n, data_dir)
+
+        # Ensure book IDs are integers
+        book_ids = [int(b) for b in book_ids if str(b).isdigit()]
+
         # --- Add Diversity Enhancement ---
-        # If we have more recommendations than needed, add diversity based on user ID
         if len(book_ids) > n:
-            # Use the user_id as a seed to create different selection patterns for different users
-            # This ensures not all users get the same top recommendations
-            np.random.seed(user_id)
-            
-            # Get unique user preference signal - each user gets a different pattern
-            diversity_factor = (user_id % 10) / 10.0  # Value between 0 and 0.9
-            
-            # Determine how many top recommendations to keep vs diversity picks
-            # Users with higher diversity_factor will get more diverse recommendations
-            top_count = int(n * (1 - diversity_factor))
+            np.random.seed(user_id)  # Seed for consistent variation
+
+            diversity_factor = (user_id % 10) / 10.0  # Between 0.0 and 0.9
+            top_count = max(1, int(n * (1 - diversity_factor)))
             diversity_count = n - top_count
-            
-            # Always include at least one top recommendation
-            top_count = max(1, top_count)
-            diversity_count = n - top_count
-            
-            # Select top recommendations
-            top_picks = book_ids[:top_count] if top_count > 0 else []
-            
-            # Select diverse recommendations from the latter part of the list
-            # Skip some obvious picks based on user_id to create different patterns
+
+            top_picks = book_ids[:top_count]  # Main recommendations
+
             skip_offset = (user_id % 5) * diversity_count
             start_index = top_count + skip_offset
             end_index = min(len(book_ids), start_index + diversity_count * 3)
-            
-            # If we don't have enough books after the skip, wrap around
+
             if end_index - start_index < diversity_count:
                 start_index = top_count
                 end_index = min(len(book_ids), start_index + diversity_count * 3)
-            
-            # Select diverse picks randomly from the available range
+
             diversity_candidates = book_ids[start_index:end_index]
             diversity_picks = list(np.random.choice(
                 diversity_candidates, 
                 size=min(diversity_count, len(diversity_candidates)), 
                 replace=False
             ))
-            
-            # Combine picks ensuring no duplicates
+
             final_book_ids = list(dict.fromkeys(top_picks + diversity_picks))
-            
-            # If we still need more recommendations, add more from the original list
             if len(final_book_ids) < n:
-                remaining_needed = n - len(final_book_ids)
-                remaining_candidates = [b for b in book_ids if b not in final_book_ids]
-                if remaining_candidates:
-                    additional_picks = remaining_candidates[:remaining_needed]
-                    final_book_ids.extend(additional_picks)
-            
-            # Trim to exact count needed
+                additional_picks = [b for b in book_ids if b not in final_book_ids][:n - len(final_book_ids)]
+                final_book_ids.extend(additional_picks)
+
             book_ids = final_book_ids[:n]
-            
-            logger.info(f"Applied diversity enhancement for user {user_id}: "
-                       f"top_count={top_count}, diversity_count={diversity_count}")
-        
-        # Map encoded book IDs to original book IDs
+
+            logger.info(f"Applied diversity enhancement for user {user_id}: top_count={top_count}, diversity_count={diversity_count}")
+
+        # --- Ensure book IDs are mapped correctly ---
         book_ids = map_book_ids(book_ids, data_dir)
-        
-        # Get metadata for recommended books
+
+        # --- Get metadata for recommended books ---
         metadata_df = get_book_metadata(book_ids, data_dir)
-        
-        # Check if we have any metadata
+
         if metadata_df.empty:
-            logger.warning(f"Could not find metadata for any of the {len(book_ids)} requested books")
-            # If no metadata found, fall back to popularity-based recommendations
-            logger.info("Falling back to popularity-based recommendations")
-            popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
-            metadata_df = get_book_metadata(popular_book_ids, data_dir)
-        
-        # Add rank information
+            logger.warning(f"Could not find metadata for {len(book_ids)} books")
+            return fallback_to_popular_books(user_id, n, data_dir)
+
+        # Add ranking to the recommendations
         metadata_df['rank'] = range(1, len(metadata_df) + 1)
-        
+
         return metadata_df
-        
+
     except Exception as e:
-        logger.error(f"Error getting recommendations for user {user_id}: {str(e)}")
-        logger.info("Attempting to fall back to popularity-based recommendations after error")
-        # Fall back to popularity-based recommendations
-        popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
-        return get_book_metadata(popular_book_ids, data_dir)
+        logger.error(f"Error getting recommendations for user {user_id}: {str(e)}", exc_info=True)
+        return fallback_to_popular_books(user_id, n, data_dir)
+
+
+def map_book_ids(book_ids: List[int], data_dir: str = 'data') -> List[int]:
+    """
+    Map encoded book IDs to original book IDs.
+
+    Parameters
+    ----------
+    book_ids : List[int]
+        List of book IDs returned by the model.
+    data_dir : str
+        Path to the data directory.
+
+    Returns
+    -------
+    List[int]
+        Mapped book IDs.
+    """
+    mapping = load_book_id_mapping(data_dir)
+    
+    # Map encoded IDs to original IDs
+    mapped_ids = [mapping.get(b, b) for b in book_ids]
+    
+    return mapped_ids
+
+
+def fallback_to_popular_books(user_id: int, n: int, data_dir: str) -> pd.DataFrame:
+    """Fallback function to provide popular books if collaborative filtering fails."""
+    logger.info("Falling back to popularity-based recommendations")
+    popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
+    return get_book_metadata(popular_book_ids, data_dir)
+
+
 
 
 def recommend_similar_books(book_id: int, model_type: str = 'collaborative',

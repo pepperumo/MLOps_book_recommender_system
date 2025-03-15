@@ -121,7 +121,7 @@ def load_test_data(data_dir: str = 'data/processed') -> Tuple[pd.DataFrame, pd.D
 
 def test_user_recommendations(
     user_ids: List[int], 
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -131,7 +131,7 @@ def test_user_recommendations(
     ----------
     user_ids : List[int]
         List of user IDs to test
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -157,7 +157,7 @@ def test_user_recommendations(
         recommendations_df = recommend_for_user(
             user_id=user_id,
             model_type=MODEL_TYPE,
-            num_recommendations=num_recommendations,
+            n=n,
             data_dir=data_dir
         )
         
@@ -197,7 +197,7 @@ def test_user_recommendations(
 
 def test_similar_books(
     book_ids: List[int], 
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -207,7 +207,7 @@ def test_similar_books(
     ----------
     book_ids : List[int]
         List of book IDs to test
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -232,7 +232,7 @@ def test_similar_books(
         similar_books_df = recommend_similar_books(
             book_id=book_id,
             model_type=MODEL_TYPE,
-            num_recommendations=num_recommendations,
+            n=n,
             data_dir=data_dir
         )
         
@@ -252,7 +252,7 @@ def test_similar_books(
     return model_results
 
 def test_cold_start(
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -260,7 +260,7 @@ def test_cold_start(
     
     Parameters
     ----------
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -286,7 +286,7 @@ def test_cold_start(
     recommendations_df = recommend_for_user(
         user_id=cold_start_user_id,
         model_type=MODEL_TYPE,
-        num_recommendations=num_recommendations,
+        n=n,
         data_dir=data_dir
     )
     
@@ -390,6 +390,7 @@ def display_results(summary: Dict[str, Any]) -> None:
     # Print the table
     print("\n" + tabulate(rows, headers=headers, tablefmt="grid"))
     logger.info("Results table generated")
+
 
 def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures') -> None:
     """
