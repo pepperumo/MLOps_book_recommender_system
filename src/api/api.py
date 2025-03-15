@@ -7,9 +7,12 @@ import os
 import sys
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
+import pandas as pd
+import numpy as np
 
 # Set up project path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -78,12 +81,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Configure CORS to allow requests from the Streamlit app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
 # Define response models
 class BookRecommendation(BaseModel):
     book_id: int
     title: str
     authors: str
     rank: int
+    image_url: Optional[str] = None
 
 class RecommendationResponse(BaseModel):
     recommendations: List[BookRecommendation]
@@ -91,12 +104,21 @@ class RecommendationResponse(BaseModel):
 # Startup event to check models availability
 @app.on_event("startup")
 async def startup_event():
+    """Load models and check if they're available"""
     logger.info("Checking model availability...")
-    model = load_recommender_model('collaborative', model_dir=os.path.join(project_root, "models"))
-    if model is None:
-        logger.warning("Collaborative model not available")
-    else:
-        logger.info("Collaborative model loaded successfully")
+    global collaborative_model
+    
+    try:
+        # Load collaborative filtering model
+        model = load_recommender_model('collaborative', models_dir=os.path.join(project_root, "models"))
+        if model:
+            collaborative_model = model
+            logger.info("Collaborative model loaded successfully")
+        else:
+            logger.error("Failed to load collaborative model")
+    except Exception as e:
+        logger.error(f"Error loading models: {e}")
+        logger.debug(traceback.format_exc())
 
 # Root endpoint
 @app.get("/")
@@ -109,7 +131,8 @@ async def root():
             {"path": "/health", "description": "Health check endpoint"},
             {"path": "/docs", "description": "API documentation"},
             {"path": "/recommend/user/{user_id}", "description": "Get book recommendations for a user"},
-            {"path": "/similar-books/{book_id}", "description": "Get similar books to a given book"}
+            {"path": "/similar-books/{book_id}", "description": "Get similar books to a given book"},
+            {"path": "/books", "description": "Get a list of books with their IDs, titles, and authors"}
         ]
     }
 
@@ -124,7 +147,9 @@ async def get_user_recommendations(
     user_id: int, 
     model_type: str = Query("collaborative", enum=["collaborative"]),
     num_recommendations: int = Query(5, ge=1, le=20),
-    n: Optional[int] = Query(None, ge=1, le=20)
+    n: Optional[int] = Query(None, ge=1, le=20),
+    include_images: bool = Query(False, description="Include book image URLs in the response"),
+    force_diverse: bool = Query(True, description="Force diversity in recommendations")
 ):
     """Get book recommendations for a user"""
     # Check for valid user ID range (assuming we have users 1-500 for example)
@@ -138,8 +163,17 @@ async def get_user_recommendations(
         num_recommendations = n
     
     try:
+        # Add a random offset to the user_id to create more diversity between users 
+        # when they are close in ID number (for popular books fallback)
+        diverse_user_id = user_id
+        if force_diverse:
+            np.random.seed(user_id)
+            # Create a unique but reproducible offset for each user
+            offset = np.random.randint(1, 1000)
+            diverse_user_id = user_id * offset
+            
         recommendations_df = recommend_for_user(
-            user_id=user_id,
+            user_id=diverse_user_id,
             model_type='collaborative',  # Always use collaborative model
             num_recommendations=num_recommendations,
             data_dir=os.path.join(project_root, 'data')
@@ -153,14 +187,18 @@ async def get_user_recommendations(
         recommendations = []
         for _, row in recommendations_df.iterrows():
             try:
-                recommendations.append(
-                    BookRecommendation(
-                        book_id=int(row['book_id']),
-                        title=row.get('title', f"Book {row['book_id']}"),
-                        authors=row.get('authors', 'Unknown Author'),
-                        rank=int(row.get('rank', 0)) + 1
-                    )
+                recommendation = BookRecommendation(
+                    book_id=int(row['book_id']),
+                    title=row.get('title', f"Book {row['book_id']}"),
+                    authors=row.get('authors', 'Unknown Author'),
+                    rank=int(row.get('rank', 0)) + 1
                 )
+                
+                # Add image URL if requested and available
+                if include_images and 'image_url' in row and row['image_url']:
+                    recommendation.image_url = row['image_url']
+                
+                recommendations.append(recommendation)
             except Exception as e:
                 logger.warning(f"Error processing recommendation row: {e}")
                 continue
@@ -180,13 +218,72 @@ async def get_user_recommendations(
         logger.error(f"Error generating recommendations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+# Books endpoint to return book list
+@app.get("/books", response_model=List[dict])
+async def get_books(limit: int = Query(1000, description="Limit the number of books returned")):
+    """Get a list of books with their IDs, titles, and authors"""
+    try:
+        # Get book data path
+        books_path = os.path.join(project_root, 'data', 'processed', 'books.csv')
+        
+        # Fallback paths if the main one doesn't exist
+        fallback_paths = [
+            os.path.join(project_root, 'data', 'processed', 'book_id_mapping.csv'),
+            os.path.join(project_root, 'data', 'raw', 'books.csv')
+        ]
+        
+        # Try to load from main path first
+        if os.path.exists(books_path):
+            books_df = pd.read_csv(books_path)
+        else:
+            # Try fallback paths
+            for path in fallback_paths:
+                if os.path.exists(path):
+                    books_df = pd.read_csv(path)
+                    break
+            else:
+                # If no paths work, return an empty list
+                logger.error("No book data files found")
+                return []
+        
+        # Ensure required columns exist
+        if 'book_id' not in books_df.columns and 'original_id' in books_df.columns:
+            books_df = books_df.rename(columns={'original_id': 'book_id'})
+            
+        if 'authors' not in books_df.columns and 'author' in books_df.columns:
+            books_df = books_df.rename(columns={'author': 'authors'})
+        elif 'authors' not in books_df.columns:
+            books_df['authors'] = 'Unknown'
+            
+        if 'title' not in books_df.columns:
+            logger.error("Required column 'title' missing from book data")
+            return []
+            
+        # Get a subset of the DataFrame with just the columns we need
+        required_columns = ['book_id', 'title', 'authors']
+        available_columns = [col for col in required_columns if col in books_df.columns]
+        books_df = books_df[available_columns]
+        
+        # Limit the number of books
+        books_df = books_df.head(limit)
+        
+        # Convert to list of dictionaries
+        books_list = books_df.fillna('').to_dict(orient='records')
+        
+        return books_list
+        
+    except Exception as e:
+        logger.error(f"Error fetching books: {e}")
+        return []
+
 # Similar books endpoint
 @app.get("/similar-books/{book_id}", response_model=RecommendationResponse)
 async def get_similar_books(
     book_id: int,
     model_type: str = Query("collaborative", enum=["collaborative"]),
     num_recommendations: int = Query(5, ge=1, le=20),
-    n: Optional[int] = Query(None, ge=1, le=20)
+    n: Optional[int] = Query(None, ge=1, le=20),
+    include_images: bool = Query(False, description="Include book image URLs in the response")
 ):
     """Get similar books to a given book using collaborative filtering"""
     # Check for valid book ID range (assuming we have books 1-10000 for example)
@@ -214,14 +311,22 @@ async def get_similar_books(
         
         recommendations = []
         for _, row in similar_books_df.iterrows():
-            recommendations.append(
-                BookRecommendation(
+            try:
+                recommendation = BookRecommendation(
                     book_id=int(row['book_id']),
                     title=row['title'],
                     authors=row['authors'],
                     rank=int(row.get('rank', 0)) + 1
                 )
-            )
+                
+                # Add image URL if requested and available
+                if include_images and 'image_url' in row and row['image_url']:
+                    recommendation.image_url = row['image_url']
+                
+                recommendations.append(recommendation)
+            except Exception as e:
+                logger.warning(f"Error processing recommendation row: {e}")
+                continue
         
         return RecommendationResponse(recommendations=recommendations)
     
@@ -241,4 +346,4 @@ async def get_similar_books(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=9999)
+    uvicorn.run(app, host="0.0.0.0", port=9998)

@@ -64,18 +64,24 @@ except ImportError:
             load_book_id_mapping
         )
     except ImportError:
-        # Add parent directory to path
+        import sys
+        import os
+        # Add the parent directory to the path to ensure we can import the modules
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.append(parent_dir)
-        from models.model_utils import BaseRecommender, load_data
-        from models.train_model import CollaborativeRecommender
-        from models.predict_model import (
-            recommend_for_user, 
-            recommend_similar_books,
-            load_recommender_model,
-            load_book_id_mapping
-        )
-        logger.warning("Using relative imports for prediction functions")
+        try:
+            from models.model_utils import BaseRecommender, load_data
+            from models.train_model import CollaborativeRecommender
+            from models.predict_model import (
+                recommend_for_user, 
+                recommend_similar_books,
+                load_recommender_model,
+                load_book_id_mapping
+            )
+            logger.info("Imported from models directory after adding parent dir to path")
+        except ImportError:
+            logger.error("Failed to import necessary modules. Please check your installation.")
+            sys.exit(1)
 
 # Define model type - collaborative only
 MODEL_TYPE = 'collaborative'
@@ -115,7 +121,7 @@ def load_test_data(data_dir: str = 'data/processed') -> Tuple[pd.DataFrame, pd.D
 
 def test_user_recommendations(
     user_ids: List[int], 
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -125,7 +131,7 @@ def test_user_recommendations(
     ----------
     user_ids : List[int]
         List of user IDs to test
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -151,7 +157,7 @@ def test_user_recommendations(
         recommendations_df = recommend_for_user(
             user_id=user_id,
             model_type=MODEL_TYPE,
-            num_recommendations=num_recommendations,
+            n=n,
             data_dir=data_dir
         )
         
@@ -191,7 +197,7 @@ def test_user_recommendations(
 
 def test_similar_books(
     book_ids: List[int], 
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -201,7 +207,7 @@ def test_similar_books(
     ----------
     book_ids : List[int]
         List of book IDs to test
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -226,7 +232,7 @@ def test_similar_books(
         similar_books_df = recommend_similar_books(
             book_id=book_id,
             model_type=MODEL_TYPE,
-            num_recommendations=num_recommendations,
+            n=n,
             data_dir=data_dir
         )
         
@@ -246,7 +252,7 @@ def test_similar_books(
     return model_results
 
 def test_cold_start(
-    num_recommendations: int = 5,
+    n: int = 5,
     data_dir: str = 'data'
 ) -> Dict[str, Any]:
     """
@@ -254,7 +260,7 @@ def test_cold_start(
     
     Parameters
     ----------
-    num_recommendations : int
+    n : int
         Number of recommendations to generate
     data_dir : str
         Data directory path
@@ -280,7 +286,7 @@ def test_cold_start(
     recommendations_df = recommend_for_user(
         user_id=cold_start_user_id,
         model_type=MODEL_TYPE,
-        num_recommendations=num_recommendations,
+        n=n,
         data_dir=data_dir
     )
     
@@ -385,6 +391,7 @@ def display_results(summary: Dict[str, Any]) -> None:
     print("\n" + tabulate(rows, headers=headers, tablefmt="grid"))
     logger.info("Results table generated")
 
+
 def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures') -> None:
     """
     Generate visualizations for test results.
@@ -466,7 +473,7 @@ def main() -> int:
         logger.info("Starting prediction tests for collaborative filtering model")
         
         # Create results directory
-        results_dir = 'results'
+        results_dir = os.path.join('data', 'results')
         os.makedirs(results_dir, exist_ok=True)
         
         # Load test data
@@ -500,18 +507,6 @@ def main() -> int:
         
         # Generate visualizations
         generate_visualization(summary)
-        
-        # Save results to JSON
-        results_path = os.path.join(results_dir, f'prediction_test_results_{timestamp}.json')
-        with open(results_path, 'w') as f:
-            json.dump({
-                'user_results': user_results,
-                'similar_book_results': similar_book_results,
-                'cold_start_results': cold_start_results,
-                'summary': summary
-            }, f, indent=2, default=str)
-        
-        logger.info(f"Test results saved to {results_path}")
         
         return 0
         

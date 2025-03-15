@@ -1,0 +1,96 @@
+schema: '2.0'
+stages:
+  retrieve_data:
+    cmd: python -m src.data.retrieve_raw_data
+    deps:
+    - path: src/data/retrieve_raw_data.py
+      hash: md5
+      md5: 10d9faf1baa15b63aee0029bc0eae2a1
+      size: 26425
+    outs:
+    - path: data/raw
+      hash: md5
+      md5: 3a55b1d22b6759aa62e66f0eea0cbb46.dir
+      size: 9490324
+      nfiles: 3
+  process_data:
+    cmd: python -m src.data.process_data
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 3a55b1d22b6759aa62e66f0eea0cbb46.dir
+      size: 9490324
+      nfiles: 3
+    - path: src/data/process_data.py
+      hash: md5
+      md5: b5eab8ac5365ed1ec0eb5262603ff461
+      size: 13740
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: e0e0a1f95c6a6c98834c47d8852696db.dir
+      size: 615920407
+      nfiles: 4
+  build_features:
+    cmd: python -m src.features.build_features
+    deps:
+    - path: data/processed
+      hash: md5
+      md5: 2bea5fdcc0c84af75e453ba4df06bc64.dir
+      size: 615944259
+      nfiles: 6
+    - path: src/features/build_features.py
+      hash: md5
+      md5: 1941f61bd5486f0178d5f2a6ea0a72ef
+      size: 8184
+    outs:
+    - path: data/features
+      hash: md5
+      md5: fad80d8af975d78205f720828f0035d8.dir
+      size: 684035
+      nfiles: 4
+  train_model:
+    cmd: python -m src.models.train_model --config config/model_params.yaml
+    deps:
+    - path: config/model_params.yaml
+      hash: md5
+      md5: 7ae94db61828ffa05602671824cf4c9a
+      size: 808
+    - path: data/features
+      hash: md5
+      md5: fad80d8af975d78205f720828f0035d8.dir
+      size: 684035
+      nfiles: 4
+    - path: src/models/train_model.py
+      hash: md5
+      md5: e7ac09b2edcef083fe3fa586fb9fbd5b
+      size: 22027
+    outs:
+    - path: models/collaborative.pkl
+      hash: md5
+      md5: 1e57f127be334eaeeabf3964d65e8b9f
+      size: 15525418
+    - path: models/collaborative_config.json
+      hash: md5
+      md5: b1edca2c961c5dd2261cef9919e08d53
+      size: 417
+  evaluate_model:
+    cmd: python -m src.models.evaluate_model --model-path models/collaborative.pkl
+    deps:
+    - path: data/processed/merged_test.csv
+      hash: md5
+      md5: 1cf90a486dce2026013913b843a5dcbf
+      size: 123192646
+    - path: models/collaborative.pkl
+      hash: md5
+      md5: 1e57f127be334eaeeabf3964d65e8b9f
+      size: 15525418
+    - path: src/models/evaluate_model.py
+      hash: md5
+      md5: ce6dbf6d1664c63be4a45bb5c1f39270
+      size: 17231
+    outs:
+    - path: data/results/evaluation_results.csv
+      hash: md5
+      md5: 4ad9ddd50c33971b1433cd7a1e3ef361
+      size: 192

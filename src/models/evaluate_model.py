@@ -14,11 +14,28 @@ import glob
 import traceback
 from datetime import datetime
 from typing import List, Dict, Any, Tuple, Optional
+import random
 
-# Add the project root to the Python path so we can import modules correctly
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-if project_root not in sys.path:
-    sys.path.append(project_root)
+# Add the project directory to the path so we can import modules properly
+try:
+    project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    if project_dir not in sys.path:
+        sys.path.append(project_dir)
+except:
+    pass
+
+# Import MLflow utilities
+try:
+    import mlflow
+    import dagshub
+    from src.models.mlflow_utils import (
+        setup_mlflow, log_params_from_model, log_metrics_safely,
+        log_model_version_as_tag, log_precision_recall_curve, get_dagshub_url
+    )
+    MLFLOW_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: MLflow integration not available: {e}")
+    MLFLOW_AVAILABLE = False
 
 # Import from model_utils
 try:
@@ -163,9 +180,8 @@ def save_evaluation_results(evaluation_results: Dict[str, float],
         # Create results directory if it doesn't exist
         os.makedirs(results_dir, exist_ok=True)
         
-        # Get timestamp for filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(results_dir, f'evaluation_results_{timestamp}.csv')
+        # Use a fixed filename for better DVC tracking
+        results_file = os.path.join(results_dir, 'evaluation_results.csv')
         
         # Convert to DataFrame for easier saving
         results_df = pd.DataFrame()
@@ -208,39 +224,88 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
     dict
         Evaluation results
     """
-    test_path = os.path.join(data_dir, test_file)
-    
-    if not os.path.exists(test_path):
-        logger.error(f"Test file not found: {test_path}")
-        return {}
-    
     try:
-        # Load test data
-        test_df = pd.read_csv(test_path)
-        logger.info(f"Loaded test data with shape {test_df.shape}")
+        # Initialize MLflow if available
+        if MLFLOW_AVAILABLE:
+            setup_mlflow(repo_owner='pepperumo', repo_name='MLOps_book_recommender_system')
+            
+        # Default k values if not provided
+        k_values = [5, 10, 20]
+            
+        # Use model params for sample size if available and not explicitly provided
+        if hasattr(recommender, 'params') and 'eval_sample_size' in recommender.params and sample_size is None:
+            sample_size = recommender.params['eval_sample_size']
+            
+        # Load test data if not provided
+        test_file_path = os.path.join(data_dir, test_file)
+        if not os.path.exists(test_file_path):
+            logger.error(f"Test file not found: {test_file_path}")
+            return {}
+        
+        logger.info(f"Loading test data from {test_file_path}")
+        test_df = pd.read_csv(test_file_path)
         
         # Evaluate the model
-        logger.info(f"Evaluating {model_name} model")
-        evaluation_results = evaluate_recommender(
-            recommender=recommender,
-            test_df=test_df,
-            k_values=[10],
-            sample_size=sample_size
-        )
+        logger.info(f"Evaluating model with k values: {k_values}")
+        results = evaluate_recommender(recommender, test_df, k_values=k_values, sample_size=sample_size)
         
-        # Save the results
-        results_dir = os.path.join(os.path.dirname(data_dir), 'results')
-        save_evaluation_results(evaluation_results, results_dir, model_name)
+        # Log the evaluation metrics with MLflow
+        if MLFLOW_AVAILABLE:
+            try:
+                with mlflow.start_run(run_name=f"{model_name}_evaluation"):
+                    # Set up model version tags if available
+                    if hasattr(recommender, 'params'):
+                        model_version = recommender.params.get("model_version", model_name)
+                        config_file = recommender.params.get("config_file", None)
+                        log_model_version_as_tag(model_version, config_file)
+                    
+                    # Log model parameters
+                    log_params_from_model(recommender)
+                    
+                    # Log evaluation metrics
+                    log_metrics_safely(results)
+                    
+                    # Create and log precision-recall data
+                    precision_metrics = {k: v for k, v in results.items() if k.startswith("precision")}
+                    recall_metrics = {k: v for k, v in results.items() if k.startswith("recall")}
+                    if precision_metrics and recall_metrics:
+                        log_precision_recall_curve(precision_metrics, recall_metrics, k_values)
+                    
+                    # Log additional info
+                    mlflow.set_tag("model_type", model_name)
+                    mlflow.set_tag("evaluation_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    mlflow.set_tag("test_file", test_file)
+                    mlflow.set_tag("sample_size", str(sample_size))
+                    
+                    # Print direct link to MLflow run
+                    print(f"\nMLflow run URL: {get_dagshub_url()}")
+            except Exception as e:
+                logger.warning(f"Error during MLflow logging: {e}")
+                logger.warning(traceback.format_exc())
         
-        # Log evaluation results
-        for metric, value in evaluation_results.items():
-            logger.info(f"{model_name.capitalize()} model {metric}: {value:.4f}")
+        # Save to local filesystem
+        save_evaluation_results(results, model_name=model_name)
         
-        return evaluation_results
+        # Print nicely formatted results by k value
+        print("\nEvaluation Results:")
+        print("=" * 50)
         
+        for k in k_values:
+            print(f"\nResults for k={k}:")
+            print("-" * 20)
+            precision_key = f"precision@{k}"
+            recall_key = f"recall@{k}"
+            
+            if precision_key in results:
+                print(f"Precision@{k}: {results[precision_key]:.4f}")
+            if recall_key in results:
+                print(f"Recall@{k}:    {results[recall_key]:.4f}")
+        
+        return results
+    
     except Exception as e:
-        logger.error(f"Error evaluating model: {e}")
-        logger.debug(traceback.format_exc())
+        logger.error(f"Error during evaluation: {e}")
+        logger.error(traceback.format_exc())
         return {}
 
 
@@ -303,10 +368,16 @@ if __name__ == "__main__":
                        help='Number of users to sample for evaluation')
     parser.add_argument('--output-dir', type=str, default='data/results',
                        help='Directory to save evaluation results')
+    parser.add_argument('--disable-mlflow', action='store_true',
+                       help='Disable MLflow tracking')
     
     args = parser.parse_args()
     
     try:
+        # Set up MLflow tracking
+        if not args.disable_mlflow:
+            setup_mlflow(repo_owner='pepperumo', repo_name='MLOps_book_recommender_system')
+            
         # If model path not provided, find the latest collaborative model
         model_path = args.model_path
         if not model_path:
@@ -336,8 +407,8 @@ if __name__ == "__main__":
         
         # Save results with consistent naming
         os.makedirs(args.output_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(args.output_dir, f'evaluation_results_{timestamp}.csv')
+        # Remove timestamp from filename for better DVC tracking
+        results_file = os.path.join(args.output_dir, 'evaluation_results.csv')
         
         # Convert to DataFrame for easier saving
         results_df = pd.DataFrame()
@@ -351,6 +422,28 @@ if __name__ == "__main__":
         # Print results to console
         print("\nEvaluation Results:")
         print("-------------------")
+        
+        # Organize metrics by k value for better readability
+        metrics_by_k = {}
+        for metric, value in results.items():
+            # Extract k value from metric name (e.g., 'precision@10' -> 10)
+            if '@' in metric:
+                metric_type, k = metric.split('@')
+                k = int(k)
+                if k not in metrics_by_k:
+                    metrics_by_k[k] = {}
+                metrics_by_k[k][metric_type] = value
+        
+        # Print metrics organized by k value
+        print(f"{'k':>2} | {'Precision':>10} | {'Recall':>10}")
+        print("-" * 35)
+        for k in sorted(metrics_by_k.keys()):
+            precision = metrics_by_k[k].get('precision', 0)
+            recall = metrics_by_k[k].get('recall', 0)
+            print(f"{k:>2} | {precision:>10.4f} | {recall:>10.4f}")
+        
+        # Also print raw metrics for backwards compatibility
+        print("\nRaw Metrics:")
         for metric, value in results.items():
             print(f"{metric}: {value:.4f}")
         print()

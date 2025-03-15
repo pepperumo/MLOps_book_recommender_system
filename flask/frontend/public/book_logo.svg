@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="248" fill="#2D3748" stroke="#4A5568" stroke-width="8"/>
+  
+  <!-- Book Stack -->
+  <g>
+    <!-- Bottom Book -->
+    <path d="M140 320L372 320C382 320 390 312 390 302L390 280C390 270 382 262 372 262L140 262C130 262 122 270 122 280L122 302C122 312 130 320 140 320Z" fill="#63B3ED" stroke="#2A4365" stroke-width="4"/>
+    
+    <!-- Middle Book -->
+    <path d="M130 262L362 262C372 262 380 254 380 244L380 222C380 212 372 204 362 204L130 204C120 204 112 212 112 222L112 244C112 254 120 262 130 262Z" fill="#FC8181" stroke="#742A2A" stroke-width="4"/>
+    
+    <!-- Top Book -->
+    <path d="M150 204L382 204C392 204 400 196 400 186L400 164C400 154 392 146 382 146L150 146C140 146 132 154 132 164L132 186C132 196 140 204 150 204Z" fill="#68D391" stroke="#22543D" stroke-width="4"/>
+  </g>
+  
+  <!-- Bookmark -->
+  <path d="M256 132L286 172L256 212L226 172L256 132Z" fill="#F6E05E" stroke="#744210" stroke-width="4"/>
+  
+  <!-- Reading Glasses -->
+  <circle cx="200" cy="370" r="30" fill="none" stroke="#E2E8F0" stroke-width="8"/>
+  <circle cx="320" cy="370" r="30" fill="none" stroke="#E2E8F0" stroke-width="8"/>
+  <path d="M230 370L290 370" stroke="#E2E8F0" stroke-width="8"/>
+  <path d="M170 370L140 350" stroke="#E2E8F0" stroke-width="8"/>
+  <path d="M350 370L380 350" stroke="#E2E8F0" stroke-width="8"/>
+
+  <!-- ML Graph Lines (representing ML aspect) -->
+  <path d="M160 110C180 90 220 130 240 100C260 70 280 110 300 90C320 70 360 90 380 70" stroke="#F687B3" stroke-width="4" stroke-linecap="round"/>
+</svg>

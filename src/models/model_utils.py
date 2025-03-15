@@ -12,13 +12,16 @@ from scipy.sparse import load_npz, save_npz
 import pickle
 import logging
 import os
-import sys
-import json
-from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union, Any
 
 # Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('model_utils')
+
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
+logger.info(f"Project root: {project_root}")
 
 class BaseRecommender:
     """Base class for recommender systems.
@@ -149,44 +152,34 @@ class BaseRecommender:
 
 def load_data(features_dir: str = 'data/features') -> Tuple[sp.csr_matrix, np.ndarray]:
     """
-    Load data for training the recommender model.
+    Load the user-item interaction matrix and book IDs.
     
-    Parameters
-    ----------
-    features_dir : str
-        Directory containing feature files
-    
-    Returns
-    -------
-    tuple
-        (user_item_matrix, book_ids)
+    Args:
+        features_dir (str): Directory containing the features
+        
+    Returns:
+        Tuple[sp.csr_matrix, np.ndarray]: User-item matrix and book IDs
     """
-    try:
-        # Create the features directory if it doesn't exist
-        os.makedirs(features_dir, exist_ok=True)
-        
-        # Load the user-item matrix
-        matrix_path = os.path.join(features_dir, 'user_item_matrix.npz')
-        
-        if os.path.exists(matrix_path):
-            logger.info(f"Loading user-item matrix from {matrix_path}")
-            user_item_matrix = load_npz(matrix_path)
-        else:
-            logger.error(f"User-item matrix not found at {matrix_path}")
-            return None, None
-            
-        # Load the book IDs
-        book_ids_path = os.path.join(features_dir, 'book_ids.npy')
-        
-        if os.path.exists(book_ids_path):
-            logger.info(f"Loading book IDs from {book_ids_path}")
-            book_ids = np.load(book_ids_path)
-        else:
-            logger.error(f"Book IDs not found at {book_ids_path}")
-            return user_item_matrix, None
-                
-        return user_item_matrix, book_ids
-            
-    except Exception as e:
-        logger.error(f"Error loading data: {e}")
+    # Convert relative path to absolute path
+    abs_features_dir = os.path.join(project_root, features_dir)
+    
+    # Load the user-item matrix
+    matrix_path = os.path.join(abs_features_dir, 'user_item_matrix.npz')
+    # Check if the matrix exists and load it
+    if os.path.exists(matrix_path):
+        user_item_matrix = load_npz(matrix_path)
+        logger.info(f"Loading user-item matrix from {matrix_path}")
+    else:
+        logger.error(f"User-item matrix not found at {matrix_path}")
         return None, None
+    
+    # Load book IDs
+    book_ids_path = os.path.join(abs_features_dir, 'book_ids.npy')
+    if os.path.exists(book_ids_path):
+        book_ids = np.load(book_ids_path)
+        logger.info(f"Loading book IDs from {book_ids_path}")
+    else:
+        logger.error(f"Book IDs not found at {book_ids_path}")
+        return None, None
+    
+    return user_item_matrix, book_ids
