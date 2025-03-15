@@ -344,6 +344,11 @@ def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processe
         logger.info("Merging book and ratings data")
         merged_df = merge_and_prepare_data(books_df, ratings_df)
         logger.info(f"Merged data shape: {merged_df.shape}")
+
+        # Save the merged dataset before splitting
+        merged_filepath = os.path.join(abs_output_filepath, 'merged.csv')
+        merged_df.to_csv(merged_filepath, index=False)
+        logger.info(f"Saved full merged dataset: {merged_filepath}")
         
         # Split data into train and test sets
         logger.info("Splitting data into train and test sets")
