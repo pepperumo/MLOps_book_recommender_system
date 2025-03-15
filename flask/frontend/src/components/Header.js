@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -11,20 +11,28 @@ import {
   Stack,
   Container,
   useScrollTrigger,
-  Slide
+  Slide,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText
 } from '@mui/material';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import PersonIcon from '@mui/icons-material/Person';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import MenuIcon from '@mui/icons-material/Menu';
 import { useThemeMode } from './ThemeModeContext';
 
 // Hide AppBar on scroll down
 function HideOnScroll(props) {
   const { children } = props;
-  const trigger = useScrollTrigger();
+  const trigger = useScrollTrigger({
+    disableHysteresis: true,
+    threshold: 0
+  });
 
   return (
     <Slide appear={false} direction="down" in={!trigger}>
@@ -37,9 +45,23 @@ const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { darkMode, toggleDarkMode } = useThemeMode();
+  const [anchorEl, setAnchorEl] = useState(null);
   
   const isActive = (path) => {
     return location.pathname === path || (path === '/dashboard' && location.pathname === '/');
+  };
+  
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+  
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+  
+  const handleNavigation = (path) => {
+    navigate(path);
+    handleMenuClose();
   };
   
   return (
@@ -60,6 +82,84 @@ const Header = () => {
       >
         <Container maxWidth="xl">
           <Toolbar disableGutters sx={{ minHeight: 64 }}>
+            {/* Mobile Menu Icon */}
+            <IconButton
+              size="large"
+              edge="start"
+              aria-label="menu"
+              sx={{ 
+                mr: 2, 
+                display: { xs: 'flex', md: 'none' },
+                color: (theme) => theme.palette.mode === 'light' ? 'primary.main' : 'white'
+              }}
+              onClick={handleMenuOpen}
+            >
+              <MenuIcon />
+            </IconButton>
+            
+            {/* Mobile Menu */}
+            <Menu
+              anchorEl={anchorEl}
+              open={Boolean(anchorEl)}
+              onClose={handleMenuClose}
+              sx={{ 
+                display: { xs: 'block', md: 'none' },
+                mt: 1
+              }}
+              PaperProps={{
+                elevation: 3,
+                sx: {
+                  border: (theme) => `1px solid ${theme.palette.divider}`,
+                  width: 250
+                }
+              }}
+            >
+              <MenuItem 
+                onClick={() => handleNavigation('/dashboard')}
+                sx={{
+                  bgcolor: isActive('/dashboard') ? 'rgba(25, 118, 210, 0.12)' : 'transparent',
+                  color: isActive('/dashboard') ? 'primary.main' : 'text.primary',
+                  py: 1.5,
+                  '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' }
+                }}
+              >
+                <ListItemIcon>
+                  <DashboardIcon fontSize="small" color={isActive('/dashboard') ? 'primary' : 'inherit'} />
+                </ListItemIcon>
+                <ListItemText primary="Dashboard" />
+              </MenuItem>
+              
+              <MenuItem 
+                onClick={() => handleNavigation('/user-recommendations')}
+                sx={{
+                  bgcolor: isActive('/user-recommendations') ? 'rgba(25, 118, 210, 0.12)' : 'transparent',
+                  color: isActive('/user-recommendations') ? 'primary.main' : 'text.primary',
+                  py: 1.5,
+                  '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' }
+                }}
+              >
+                <ListItemIcon>
+                  <PersonIcon fontSize="small" color={isActive('/user-recommendations') ? 'primary' : 'inherit'} />
+                </ListItemIcon>
+                <ListItemText primary="User Recommendations" />
+              </MenuItem>
+              
+              <MenuItem 
+                onClick={() => handleNavigation('/similar-books')}
+                sx={{
+                  bgcolor: isActive('/similar-books') ? 'rgba(25, 118, 210, 0.12)' : 'transparent', 
+                  color: isActive('/similar-books') ? 'primary.main' : 'text.primary',
+                  py: 1.5,
+                  '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.08)' }
+                }}
+              >
+                <ListItemIcon>
+                  <CompareArrowsIcon fontSize="small" color={isActive('/similar-books') ? 'primary' : 'inherit'} />
+                </ListItemIcon>
+                <ListItemText primary="Similar Books" />
+              </MenuItem>
+            </Menu>
+            
             <Box
               sx={{
                 display: 'flex',
@@ -67,7 +167,16 @@ const Header = () => {
                 mr: 3
               }}
             >
-              <MenuBookIcon sx={{ mr: 1, color: 'primary.main', fontSize: 28 }} />
+              <Box
+                component="img"
+                src="/logo192.png"
+                alt="Book Recommender Logo"
+                sx={{ 
+                  height: 40, 
+                  width: 40, 
+                  mr: 1 
+                }}
+              />
               <Typography
                 variant="h6"
                 noWrap

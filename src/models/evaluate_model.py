@@ -407,8 +407,8 @@ if __name__ == "__main__":
         
         # Save results with consistent naming
         os.makedirs(args.output_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_file = os.path.join(args.output_dir, f'evaluation_results_{timestamp}.csv')
+        # Remove timestamp from filename for better DVC tracking
+        results_file = os.path.join(args.output_dir, 'evaluation_results.csv')
         
         # Convert to DataFrame for easier saving
         results_df = pd.DataFrame()

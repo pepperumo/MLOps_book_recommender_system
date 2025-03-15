@@ -1,343 +1,281 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
+  Container,
   Typography,
   Grid,
-  Card,
-  CardContent,
-  CardMedia,
-  CardActions,
-  Button,
-  CircularProgress,
-  Paper,
-  Alert,
-  AlertTitle,
-  Chip,
-  Divider,
   FormControl,
   InputLabel,
-  Select,
   MenuItem,
+  Select,
+  Paper,
+  Button,
+  Alert,
+  AlertTitle,
+  CircularProgress,
+  useTheme,
   TextField,
-  FormHelperText,
-  Container,
-  Skeleton,
-  CardActionArea,
-  Stack,
-  Autocomplete,
-  useTheme
+  Rating,
+  Autocomplete
 } from '@mui/material';
-import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
-import SearchIcon from '@mui/icons-material/Search';
-import BookIcon from '@mui/icons-material/Book';
 import LocalLibraryIcon from '@mui/icons-material/LocalLibrary';
-import InfoIcon from '@mui/icons-material/Info';
+import SearchIcon from '@mui/icons-material/Search';
+import BookCard from '../components/BookCard';
+import LogoLoading from '../components/LogoLoading';
+import { useLocation } from 'react-router-dom';
 
 const SimilarBooks = () => {
-  const location = useLocation();
   const theme = useTheme();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [booksLoading, setBooksLoading] = useState(true);
-  
-  // Data states
+  const location = useLocation();
+
+  // State variables
   const [allBooks, setAllBooks] = useState([]);
-  const [genres, setGenres] = useState([]);
-  const [authors, setAuthors] = useState([]);
-  const [similarBooks, setSimilarBooks] = useState([]);
-  
-  // Selection states
   const [selectedBook, setSelectedBook] = useState(null);
-  const [selectedGenre, setSelectedGenre] = useState('');
-  const [selectedAuthor, setSelectedAuthor] = useState('');
+  const [similarBooks, setSimilarBooks] = useState([]);
   const [recommendationCount, setRecommendationCount] = useState(5);
+  const [loading, setLoading] = useState(false);
+  const [booksLoading, setBooksLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [noResults, setNoResults] = useState(false);
-  
-  // Fetch all books, genres, and authors on component mount
-  useEffect(() => {
-    fetchAllBooks();
-    fetchGenres();
-    fetchAuthors();
-    
-    // Check for book_id in URL parameters
-    const params = new URLSearchParams(location.search);
-    const bookIdFromUrl = params.get('book_id');
-    
-    if (bookIdFromUrl) {
-      // If book_id is in the URL, fetch similar books for this book
-      fetchBookById(bookIdFromUrl);
+
+  // Fetch similar books from API
+  const fetchSimilarBooks = useCallback(async (bookId) => {
+    if (!bookId) {
+      console.error('Book ID is required to fetch similar books');
+      setError('Book ID is required');
+      setLoading(false);
+      return;
     }
-  }, [location]);
-  
-  // Fetch book by ID
-  const fetchBookById = async (bookId) => {
-    setBooksLoading(true);
+    
+    console.log('Starting to fetch similar books for bookId:', bookId);
+    setLoading(true);
+    setError(null);
+    setSimilarBooks([]);
+    
     try {
-      // Use the books endpoint with book_id parameter
-      const response = await fetch(`http://localhost:5000/api/books?book_id=${bookId}`);
-      if (!response.ok) {
-        throw new Error(`Error fetching book: ${response.statusText}`);
-      }
-      const data = await response.json();
+      const apiUrl = `http://localhost:5000/api/similar-books/${bookId}?n=${recommendationCount}&include_images=true`;
+      console.log(`Calling API URL: ${apiUrl}`);
       
-      // Check if we got any books back
-      if (data.books && data.books.length > 0) {
-        // Set the first book as selected
-        setSelectedBook(data.books[0]);
-        // Fetch similar books for this book
-        fetchSimilarBooks(bookId);
+      const response = await fetch(apiUrl);
+      console.log('Response received:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        throw new Error(`Error fetching similar books: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('API Response data:', data);
+      
+      // Check the structure of the response
+      let books = [];
+      if (Array.isArray(data)) {
+        // The API directly returned an array of books
+        books = data;
+        console.log('Response is an array with', books.length, 'books');
+      } else if (data.recommendations && Array.isArray(data.recommendations)) {
+        // The API returned an object with a recommendations array
+        books = data.recommendations;
+        console.log('Response has recommendations array with', books.length, 'books');
+      } else if (data.book_id && data.recommendations) {
+        // The API returned a different structure with book_id and recommendations
+        books = data.recommendations;
+        console.log('Response has book_id and recommendations with', books.length, 'books');
       } else {
-        throw new Error(`Book with ID ${bookId} not found`);
+        // Fall back to using the entire response data
+        books = data;
+        console.log('Using full response as books:', books);
+      }
+      
+      // Update state with books
+      console.log('Setting similar books:', books);
+      setSimilarBooks(books);
+      setNoResults(books.length === 0);
+      
+    } catch (err) {
+      console.error('Error in fetchSimilarBooks:', err);
+      setError(`Failed to load similar books: ${err.message}`);
+      setSimilarBooks([]);
+    } finally {
+      console.log('Finished fetching similar books, setting loading to false');
+      setLoading(false);
+    }
+  }, [recommendationCount]);
+
+  // Simple fetch for all books - now called only once on component mount
+  const fetchAllBooks = useCallback(async () => {
+    setBooksLoading(true);
+    setError(null);
+    try {
+      console.log('Fetching all books...');
+      // Remove the limit to get all books from the API
+      const response = await fetch('http://localhost:5000/api/books');
+      if (!response.ok) {
+        throw new Error(`Error fetching books: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received books data:', data);
+      
+      // Handle the API response format where books are in the "books" property
+      if (data.books && Array.isArray(data.books)) {
+        console.log(`Fetched ${data.books.length} books from 'books' property`);
+        setAllBooks(data.books);
+      } else if (Array.isArray(data)) {
+        console.log(`Fetched ${data.length} books from direct array`);
+        setAllBooks(data);
+      } else {
+        console.error('Unexpected data format from books API:', data);
+        setAllBooks([]);
+        setError('Received invalid data format from server');
       }
     } catch (err) {
-      console.error('Error fetching book by ID:', err);
-      setError(`Failed to load book details: ${err.message}`);
+      console.error('Error fetching books:', err);
+      setError(`Failed to load books: ${err.message}`);
+      setAllBooks([]);
     } finally {
       setBooksLoading(false);
+    }
+  }, []);
+
+  // Handle changing recommendation count
+  const handleRecommendationCountChange = (event) => {
+    const value = parseInt(event.target.value, 10);
+    if (!isNaN(value) && value > 0 && value <= 12) {
+      setRecommendationCount(value);
     }
   };
 
-  // Fetch all books
-  const fetchAllBooks = async () => {
-    setBooksLoading(true);
-    try {
-      const response = await fetch('http://localhost:5000/api/books?limit=100');
-      if (!response.ok) {
-        throw new Error(`Error fetching books: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setAllBooks(data.books || []);
-    } catch (err) {
-      console.error('Error fetching books:', err);
-      setError('Failed to load books. Please try again later.');
-    } finally {
-      setBooksLoading(false);
-    }
-  };
-  
-  // Fetch all genres
-  const fetchGenres = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/genres');
-      if (!response.ok) {
-        throw new Error(`Error fetching genres: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setGenres(data.genres || []);
-    } catch (err) {
-      console.error('Error fetching genres:', err);
-    }
-  };
-  
-  // Fetch all authors
-  const fetchAuthors = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/authors');
-      if (!response.ok) {
-        throw new Error(`Error fetching authors: ${response.statusText}`);
-      }
-      const data = await response.json();
-      setAuthors(data.authors || []);
-    } catch (err) {
-      console.error('Error fetching authors:', err);
-    }
-  };
-  
-  // Fetch books by genre and/or author
-  const fetchBooksByFilter = async () => {
-    setBooksLoading(true);
-    setNoResults(false);
-    
-    let url = 'http://localhost:5000/api/books?limit=100';
-    if (selectedGenre) {
-      url += `&genre=${encodeURIComponent(selectedGenre)}`;
-    }
-    if (selectedAuthor) {
-      url += `&author=${encodeURIComponent(selectedAuthor)}`;
-    }
-    
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Error fetching filtered books: ${response.statusText}`);
-      }
-      const data = await response.json();
-      const books = data.books || [];
-      setAllBooks(books);
-      
-      if (books.length === 0) {
-        setNoResults(true);
-        setSelectedBook(null);
-      } else if (selectedBook === null && books.length > 0) {
-        // Select the first book if none is selected
-        setSelectedBook(books[0]);
-        fetchSimilarBooks(books[0].book_id);
-      }
-    } catch (err) {
-      console.error('Error fetching filtered books:', err);
-      setError('Failed to load books with the selected filters.');
-    } finally {
-      setBooksLoading(false);
-    }
-  };
-  
-  // Fetch similar books
-  const fetchSimilarBooks = async (bookId) => {
-    if (!bookId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Call the FastAPI endpoint directly
-      const response = await fetch(`http://localhost:9998/similar-books/${bookId}?num_recommendations=${recommendationCount}&include_images=true`);
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(`No similar books found for this book`);
-        } else {
-          throw new Error(`Error fetching similar books: ${response.statusText}`);
-        }
-      }
-      
-      const data = await response.json();
-      setSimilarBooks(data.recommendations || []);
-      
-      if (!data.recommendations || data.recommendations.length === 0) {
-        setNoResults(true);
-      } else {
-        setNoResults(false);
-      }
-    } catch (err) {
-      console.error('Error fetching similar books:', err);
-      setError(err.message);
-      setSimilarBooks([]);
-      setNoResults(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Handle book selection change
-  const handleBookChange = (event, newValue) => {
-    setSelectedBook(newValue);
+  // Handle book selection change from dropdown
+  const handleBookChange = useCallback((event, newValue) => {
     if (newValue) {
-      fetchSimilarBooks(newValue.book_id);
+      setSelectedBook(newValue);
     } else {
       setSimilarBooks([]);
     }
+  }, []);
+
+  // Handle book selection and fetchSimilarBooks
+  const handleGetSimilar = (book) => {
+    // Set selected book
+    setSelectedBook(book);
+    // Fetch similar books for this book
+    fetchSimilarBooks(book.book_id);
   };
-  
-  // Handle genre selection change
-  const handleGenreChange = (event) => {
-    setSelectedGenre(event.target.value);
-  };
-  
-  // Handle author selection change
-  const handleAuthorChange = (event) => {
-    setSelectedAuthor(event.target.value);
-  };
-  
-  // Handle recommendation count change
-  const handleRecommendationCountChange = (event) => {
-    const value = parseInt(event.target.value, 10);
-    if (!isNaN(value) && value > 0 && value <= 20) {
-      setRecommendationCount(value);
-      if (selectedBook) {
-        fetchSimilarBooks(selectedBook.book_id);
+
+  // Effect to load initial data
+  useEffect(() => {
+    // Fetch all books on component mount - only done once
+    fetchAllBooks();
+  }, [fetchAllBooks]);
+
+  // Separate effect for handling URL parameters after books are loaded
+  useEffect(() => {
+    if (allBooks.length === 0) return; // Wait until books are loaded
+    
+    // Check if there's a book_id in the URL
+    const params = new URLSearchParams(location.search);
+    const bookIdFromUrl = params.get('book_id');
+    const fetchFromUrl = params.get('fetch') === 'true';
+    
+    if (bookIdFromUrl) {
+      // Find the book in allBooks and set it as selected
+      const bookInList = allBooks.find(b => 
+        b.book_id && b.book_id.toString() === bookIdFromUrl.toString()
+      );
+      
+      if (bookInList) {
+        console.log('Found book from URL:', bookInList.title);
+        setSelectedBook(bookInList);
+        
+        // If fetch=true is in the URL, automatically fetch recommendations
+        if (fetchFromUrl) {
+          console.log('Auto-fetching recommendations due to fetch=true in URL');
+          fetchSimilarBooks(bookInList.book_id);
+          
+          // Remove the fetch parameter from URL to prevent re-fetching on navigation
+          const newUrl = new URL(window.location);
+          newUrl.searchParams.delete('fetch');
+          window.history.replaceState({}, '', newUrl);
+        }
       }
     }
-  };
-  
-  // Apply genre and author filters
-  const applyFilters = () => {
-    fetchBooksByFilter();
-  };
-  
-  // Reset all filters
-  const resetFilters = () => {
-    setSelectedGenre('');
-    setSelectedAuthor('');
-    fetchAllBooks();
-  };
-  
-  // Get a random pastel color based on index
-  const getRandomPastelColor = (index) => {
-    const colors = [
-      '#bbdefb', // light blue
-      '#c8e6c9', // light green
-      '#d1c4e9', // light purple
-      '#ffecb3', // light yellow
-      '#ffccbc', // light red
-      '#cfd8dc', // light gray
-    ];
-    return colors[index % colors.length];
-  };
+  }, [location.search, allBooks, fetchSimilarBooks]);
+
+  useEffect(() => {
+    if (selectedBook?.book_id) {
+      // Update URL without page reload
+      window.history.pushState(
+        { bookId: selectedBook.book_id },
+        '',
+        `/similar-books?book_id=${selectedBook.book_id}`
+      );
+    }
+  }, [selectedBook]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const bookId = params.get('book_id');
+      
+      if (bookId) {
+        // Check if book is in our allBooks array first
+        const bookInList = allBooks.find(b => 
+          b.book_id && b.book_id.toString() === bookId.toString()
+        );
+        
+        if (bookInList) {
+          setSelectedBook(bookInList);
+        } else {
+          setSelectedBook(null);
+          setSimilarBooks([]);
+        }
+      } else {
+        setSelectedBook(null);
+        setSimilarBooks([]);
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [allBooks]);
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, mt: 8 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography
-          variant="h4"
-          component="h1"
-          gutterBottom
-          sx={{
-            fontWeight: 700,
-            position: 'relative',
-            '&:after': {
-              content: '""',
-              position: 'absolute',
-              bottom: -8,
-              left: 0,
-              width: 60,
-              height: 4,
-              backgroundColor: 'primary.main',
-              borderRadius: 2
-            }
-          }}
-        >
-          Similar Books
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 4 }}>
-          Find books similar to ones you already love based on our collaborative filtering algorithm
-        </Typography>
-      </Box>
-
-      {/* Book Selection Section */}
-      <Paper
-        elevation={0}
-        sx={{
-          p: 3,
-          mb: 4,
-          borderRadius: 2,
-          border: (theme) => `1px solid ${theme.palette.divider}`
+      <Typography variant="h4" component="h1" gutterBottom align="center" sx={{ mb: 4 }}>
+        Book Recommendation Engine
+      </Typography>
+      
+      {/* Book Selection and Recommendation Count */}
+      <Paper 
+        elevation={3} 
+        sx={{ 
+          p: 3, 
+          mb: 4, 
+          borderRadius: '12px',
+          background: theme.palette.mode === 'light' 
+            ? '#fff' 
+            : 'rgba(45, 45, 45, 0.98)',
+          boxShadow: theme.shadows[4]
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <BookIcon sx={{ fontSize: 24, mr: 1, color: 'primary.main' }} />
-          <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-            Select a Book
-          </Typography>
-        </Box>
-
-        <Grid container spacing={3}>
-          {/* Filters */}
-          <Grid item xs={12} md={8}>
+        <Grid container spacing={3} alignItems="center">
+          <Grid item xs={12} md={4}>
             <Autocomplete
               id="book-select"
-              options={allBooks}
-              getOptionLabel={(option) => `${option.title} by ${option.authors}`}
+              options={allBooks || []}
               value={selectedBook}
               onChange={handleBookChange}
+              getOptionLabel={(option) => option?.title || ''}
+              isOptionEqualToValue={(option, value) => option?.book_id === value?.book_id}
               loading={booksLoading}
+              loadingText="Loading books..."
+              noOptionsText="No books found"
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Search for a book"
+                  label="Select a Book"
                   variant="outlined"
-                  fullWidth
+                  placeholder="Search for a book title..."
                   InputProps={{
                     ...params.InputProps,
                     endAdornment: (
@@ -351,206 +289,158 @@ const SimilarBooks = () => {
               )}
               renderOption={(props, option) => (
                 <li {...props}>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Box
-                      component="img"
-                      sx={{
-                        width: 40,
-                        height: 60,
-                        objectFit: 'contain',
-                        mr: 2,
-                        borderRadius: 1,
-                      }}
-                      src={option.image_url || "https://islandpress.org/sites/default/files/default_book_cover_2015.jpg"}
-                      alt={option.title}
-                    />
-                    <Box>
-                      <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                        {option.title}
-                      </Typography>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div style={{ marginRight: '10px' }}>
+                      {option.image_url ? (
+                        <img
+                          src={option.image_url}
+                          alt={option.title}
+                          style={{ width: '40px', height: '60px', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: '40px',
+                            height: '60px',
+                            backgroundColor: '#f0f0f0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <span>No Cover</span>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Typography variant="body1">{option.title}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        by {option.authors}
+                        {option.authors}
                       </Typography>
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                 </li>
               )}
             />
           </Grid>
-          
           <Grid item xs={12} md={4}>
-            <TextField
-              label="Number of Recommendations"
-              type="number"
-              value={recommendationCount}
-              onChange={handleRecommendationCountChange}
-              fullWidth
-              variant="outlined"
-              InputProps={{ inputProps: { min: 1, max: 20 } }}
-              helperText="Between 1 and 20"
-            />
+            <FormControl fullWidth variant="outlined">
+              <InputLabel id="recommendation-count-label">Number of Recommendations</InputLabel>
+              <Select
+                labelId="recommendation-count-label"
+                id="recommendation-count"
+                value={recommendationCount}
+                onChange={handleRecommendationCountChange}
+                label="Number of Recommendations"
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((count) => (
+                  <MenuItem key={count} value={count}>
+                    {count}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                if (selectedBook && selectedBook.book_id) {
+                  console.log('Fetching recommendations for book ID:', selectedBook.book_id);
+                  fetchSimilarBooks(selectedBook.book_id);
+                } else {
+                  console.error('No book selected or book_id is missing');
+                  setError('Please select a valid book first');
+                }
+              }}
+              disabled={!selectedBook}
+              startIcon={<SearchIcon />}
+              sx={{
+                borderRadius: '8px',
+                textTransform: 'none',
+                px: 3,
+                py: 1
+              }}
+            >
+              Get Recommendations
+            </Button>
           </Grid>
         </Grid>
-
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600 }}>
-            Filter Books By:
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={5}>
-              <FormControl fullWidth variant="outlined" size="small">
-                <InputLabel>Genre</InputLabel>
-                <Select
-                  value={selectedGenre}
-                  onChange={handleGenreChange}
-                  label="Genre"
-                >
-                  <MenuItem value="">
-                    <em>All Genres</em>
-                  </MenuItem>
-                  {genres.map((genre) => (
-                    <MenuItem key={genre} value={genre}>
-                      {genre}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={5}>
-              <FormControl fullWidth variant="outlined" size="small">
-                <InputLabel>Author</InputLabel>
-                <Select
-                  value={selectedAuthor}
-                  onChange={handleAuthorChange}
-                  label="Author"
-                >
-                  <MenuItem value="">
-                    <em>All Authors</em>
-                  </MenuItem>
-                  {authors.map((author) => (
-                    <MenuItem key={author} value={author}>
-                      {author}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={2}>
-              <Stack direction="row" spacing={1} sx={{ height: '100%' }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={applyFilters}
-                  startIcon={<SearchIcon />}
-                  sx={{
-                    height: '100%',
-                    borderRadius: '8px',
-                    textTransform: 'none'
-                  }}
-                >
-                  Apply
-                </Button>
-                <Button
-                  variant="text"
-                  size="small"
-                  onClick={resetFilters}
-                  sx={{
-                    height: '100%',
-                    borderRadius: '8px',
-                    textTransform: 'none'
-                  }}
-                >
-                  Reset
-                </Button>
-              </Stack>
-            </Grid>
-          </Grid>
-        </Box>
       </Paper>
 
-      {/* Selected Book Info */}
+      {/* Selected Book Section */}
       {selectedBook && (
-        <Paper
-          elevation={0}
-          sx={{
-            p: 3,
-            mb: 4,
-            borderRadius: 2,
-            border: (theme) => `1px solid ${theme.palette.divider}`
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            p: 3, 
+            mb: 4, 
+            borderRadius: '12px',
+            background: theme.palette.mode === 'light' 
+              ? '#fff' 
+              : 'rgba(40, 40, 40, 0.95)',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-            <InfoIcon sx={{ fontSize: 24, mr: 1, color: 'primary.main' }} />
-            <Typography variant="h6" component="h2" sx={{ fontWeight: 600 }}>
-              Selected Book
-            </Typography>
-          </Box>
-          
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
               <Box
                 component="img"
+                src={selectedBook.image_url || 'https://via.placeholder.com/200x300?text=No+Cover'}
+                alt={selectedBook.title}
                 sx={{
-                  width: '100%',
-                  maxHeight: 300,
+                  width: 'auto',
+                  height: { xs: 220, md: 280 },
                   objectFit: 'contain',
                   borderRadius: 2,
-                  boxShadow: (theme) => theme.shadows[4],
-                  backgroundColor: theme.palette.mode === 'light' ? 'rgba(245, 245, 245, 0.8)' : 'rgba(30, 30, 30, 0.8)'
+                  boxShadow: 4
                 }}
-                src={selectedBook.image_url || "https://islandpress.org/sites/default/files/default_book_cover_2015.jpg"}
-                alt={selectedBook.title}
               />
             </Grid>
-            <Grid item xs={12} sm={9}>
-              <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+            <Grid item xs={12} md={9}>
+              <Typography variant="h4" component="h2" gutterBottom>
                 {selectedBook.title}
               </Typography>
-              <Typography variant="subtitle1" gutterBottom>
+              <Typography variant="h6" component="h3" gutterBottom color="text.secondary">
                 by {selectedBook.authors}
               </Typography>
+              
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Average Rating: {selectedBook.average_rating || "N/A"}
+                <Rating 
+                  value={parseFloat(selectedBook.average_rating) || 0} 
+                  precision={0.1} 
+                  readOnly 
+                  sx={{ mr: 1 }}
+                />
+                <Typography variant="body1">
+                  {selectedBook.average_rating?.toFixed(1) || 'N/A'}
                 </Typography>
+                {selectedBook.ratings_count && (
+                  <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    ({selectedBook.ratings_count.toLocaleString()} ratings)
+                  </Typography>
+                )}
               </Box>
+              
               {selectedBook.description && (
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {selectedBook.description.substring(0, 300)}
-                  {selectedBook.description.length > 300 ? '...' : ''}
-                </Typography>
-              )}
-              {selectedBook.genres && (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {selectedBook.genres.split('|').map((genre, index) => (
-                    <Chip 
-                      key={index} 
-                      label={genre.trim()} 
-                      size="small" 
-                      sx={{ 
-                        backgroundColor: theme.palette.mode === 'light' 
-                          ? getRandomPastelColor(index)
-                          : 'rgba(255, 255, 255, 0.08)',
-                        color: theme.palette.mode === 'light' 
-                          ? 'rgba(0, 0, 0, 0.7)'
-                          : 'rgba(255, 255, 255, 0.8)',
-                      }}
-                    />
-                  ))}
-                </Box>
+                <>
+                  <Typography variant="body1" paragraph>
+                    {selectedBook.description}
+                  </Typography>
+                </>
               )}
             </Grid>
           </Grid>
         </Paper>
       )}
-
+      
       {/* Similar Books Results */}
       <Paper
         elevation={0}
         sx={{
           p: 3,
           borderRadius: 2,
-          border: (theme) => `1px solid ${theme.palette.divider}`
+          border: (theme) => `1px solid ${theme.palette.divider}`,
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -559,22 +449,11 @@ const SimilarBooks = () => {
             Similar Books
           </Typography>
         </Box>
-        
+
         {loading ? (
-          <Grid container spacing={3}>
-            {[...Array(recommendationCount)].map((_, index) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
-                <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  <Skeleton variant="rectangular" height={200} />
-                  <CardContent>
-                    <Skeleton variant="text" width="80%" height={30} />
-                    <Skeleton variant="text" width="40%" />
-                    <Skeleton variant="text" width="60%" />
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <LogoLoading size="large" message="Fetching similar books..." />
+          </Box>
         ) : error ? (
           <Alert severity="error" sx={{ mb: 3 }}>
             <AlertTitle>Error</AlertTitle>
@@ -592,86 +471,9 @@ const SimilarBooks = () => {
           </Alert>
         ) : (
           <Grid container spacing={3}>
-            {similarBooks.map((book) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={book.book_id}>
-                <Card 
-                  elevation={0}
-                  sx={{ 
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRadius: 2,
-                    border: (theme) => `1px solid ${theme.palette.divider}`,
-                    transition: 'transform 0.3s, box-shadow 0.3s',
-                    '&:hover': {
-                      transform: 'translateY(-8px)',
-                      boxShadow: (theme) => theme.shadows[4],
-                    }
-                  }}
-                >
-                  <CardMedia
-                    component="img"
-                    height="200"
-                    image={book.image_url || "https://islandpress.org/sites/default/files/default_book_cover_2015.jpg"}
-                    alt={book.title}
-                    sx={{ 
-                      objectFit: 'contain', 
-                      p: 2,
-                      backgroundColor: theme.palette.mode === 'light' ? 'rgba(245, 245, 245, 0.8)' : 'rgba(30, 30, 30, 0.8)'
-                    }}
-                  />
-                  <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-                    <Typography 
-                      gutterBottom 
-                      variant="h6" 
-                      component="div" 
-                      sx={{ 
-                        fontWeight: 600,
-                        fontSize: '1rem',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        height: '3rem'
-                      }}
-                    >
-                      {book.title}
-                    </Typography>
-                    <Typography 
-                      variant="body2" 
-                      color="text.secondary"
-                      sx={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        height: '2.5rem',
-                        mb: 1
-                      }}
-                    >
-                      by {book.authors}
-                    </Typography>
-                  </CardContent>
-                  <Divider />
-                  <CardActions sx={{ p: 2, pt: 1, pb: 1.5 }}>
-                    <Button 
-                      size="small" 
-                      variant="outlined" 
-                      fullWidth
-                      startIcon={<SearchIcon />}
-                      onClick={() => navigate(`/similar-books?book_id=${book.book_id}`)}
-                      sx={{
-                        borderRadius: '8px',
-                        textTransform: 'none',
-                        fontWeight: 500
-                      }}
-                    >
-                      Find Similar
-                    </Button>
-                  </CardActions>
-                </Card>
+            {similarBooks.map((book, index) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
+                <BookCard book={book} onGetSimilar={handleGetSimilar} />
               </Grid>
             ))}
           </Grid>
