@@ -13,10 +13,15 @@ from typing import List, Dict, Optional, Tuple
 import itertools
 import numpy as np
 import click
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("retrieve_from_google")
+
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
+logger.info(f"Project root: {project_root}")
 
 # Google Books API constants
 GOOGLE_API_KEY = "AIzaSyAfBBcsfRQWfwSn9csJJjqoCxqPRZmSDOE"
@@ -613,10 +618,12 @@ def main(limit: int, num_users: int, sparsity: float, output_filepath: str):
     """
     Main function to retrieve data from Google Books API and save to CSV files
     """
-    logger.info(f"Starting data retrieval, output_filepath: {output_filepath}")
+    # Convert relative path to absolute path using project root
+    abs_output_filepath = os.path.join(project_root, output_filepath)
+    logger.info(f"Starting data retrieval, output_filepath: {abs_output_filepath}")
     
     # Create output directory if it doesn't exist
-    Path(output_filepath).mkdir(parents=True, exist_ok=True)
+    Path(abs_output_filepath).mkdir(parents=True, exist_ok=True)
     
     # Retrieve books from Google Books API
     books = get_books(limit=limit)
@@ -649,14 +656,18 @@ def main(limit: int, num_users: int, sparsity: float, output_filepath: str):
         logger.info(f"After removing duplicate ratings: {len(ratings_df)} ratings")
     
     # Save the data to CSV files
-    books_filepath = os.path.join(output_filepath, "books.csv")
-    ratings_filepath = os.path.join(output_filepath, "ratings.csv")
+    books_filepath = os.path.join(abs_output_filepath, "books.csv")
+    ratings_filepath = os.path.join(abs_output_filepath, "ratings.csv")
     
     books_df.to_csv(books_filepath, index=False)
     logger.info(f"Saved {len(books_df)} books to {books_filepath}")
     
     ratings_df.to_csv(ratings_filepath, index=False)
     logger.info(f"Saved {len(ratings_df)} ratings to {ratings_filepath}")
+    
+    # Create a marker file to indicate completion
+    with open(os.path.join(abs_output_filepath, "retrieval_complete"), 'w') as f:
+        f.write(f"Data retrieval completed at {datetime.now().isoformat()}")
     
     logger.info("Data retrieval and processing complete")
 

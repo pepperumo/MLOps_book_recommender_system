@@ -4,32 +4,48 @@ Book recommender system based on collaborative filtering.
 This module contains the implementation of the book recommender system,
 including the CollaborativeRecommender implementation and main training functionality.
 """
-import pandas as pd
-import numpy as np
-import scipy.sparse as sp
-from scipy.sparse import load_npz, save_npz
-from sklearn.neighbors import NearestNeighbors
-import pickle
-import logging
-import os
-import sys
-import json
-import time
-import traceback
 import argparse
+import json
+import logging
+import numpy as np
+import os
+import pandas as pd
+import pickle
+import scipy.sparse as sp
+import sys
+import warnings
 import yaml
-from datetime import datetime
+import traceback
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Union, Any
+from datetime import datetime
+from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import NearestNeighbors
+from sklearn.metrics.pairwise import cosine_similarity
+from typing import Dict, Any, List, Tuple, Optional, Union
+
+# Import local modules
+from src.models.model_utils import load_data, BaseRecommender
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('train_model')
+
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
+logger.info(f"Project root: {project_root}")
 
 # Add the project root to the Python path so we can import modules correctly
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-if project_root not in sys.path:
-    sys.path.append(project_root)
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
 
 # Import MLflow utilities
 try:
     import mlflow
+    from mlflow.tracking import MlflowClient
     import dagshub
     from src.models.mlflow_utils import (
         setup_mlflow, log_params_from_model, log_metrics_safely,
@@ -40,22 +56,8 @@ except ImportError as e:
     print(f"Warning: MLflow integration not available: {e}")
     MLFLOW_AVAILABLE = False
 
-# Import from model_utils
-try:
-    from src.models.model_utils import BaseRecommender, load_data
-except ImportError:
-    try:
-        from models.model_utils import BaseRecommender, load_data
-    except ImportError:
-        import sys
-        import os
-        # Add the parent directory to the path to ensure we can import the module
-        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        sys.path.append(parent_dir)
-        from models.model_utils import BaseRecommender, load_data
-
 # Set up logging
-log_dir = os.path.join('logs')
+log_dir = os.path.join(project_root, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_filename = os.path.join(log_dir, f'train_model_{timestamp}.log')
@@ -71,43 +73,6 @@ logging.basicConfig(
 logger = logging.getLogger('train_model')
 
 
-def load_config(config_path="config/model_params.yaml"):
-    """
-    Load model configuration from YAML file
-    
-    Parameters
-    ----------
-    config_path : str
-        Path to the YAML configuration file
-        
-    Returns
-    -------
-    dict
-        Configuration dictionary with model parameters
-    """
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        logger.info(f"Loaded configuration from {config_path}")
-        return config
-    except Exception as e:
-        logger.error(f"Error loading config from {config_path}: {e}")
-        logger.info("Using default configuration")
-        return {
-            "collaborative": {
-                "n_neighbors": 20,
-                "max_rated_items": 50,
-                "similarity_metric": "cosine",
-                "algorithm": "brute",
-                "n_jobs": -1,
-                "k_values": [5, 10, 20],
-                "eval_sample_size": 50
-            },
-            "data": {
-                "features_dir": "data/features",
-                "output_dir": "models"
-            }
-        }
 
 
 ###################################################
@@ -175,19 +140,40 @@ class CollaborativeRecommender(BaseRecommender):
         if self.book_ids is not None:
             # Create mapping from book ID to matrix index
             self.book_id_to_index = {int(book_id): i for i, book_id in enumerate(self.book_ids)}
+
     
-    def fit(self):
+    def fit(self, config_path=None):
         """
-        Train the collaborative filtering model.
+        Train the collaborative filtering model with optional configuration file.
         
-        Builds nearest neighbors model for item-based collaborative filtering
-        and pre-computes item-item similarity matrix.
+        Args:
+            config_path (str, optional): Path to configuration file.
         
-        Returns
-        -------
-        self
+        Returns:
+            CollaborativeRecommender: Trained model
         """
-        logger.info("Training item-based collaborative filtering model")
+        # Load configuration
+        config = load_config(config_path)
+        
+        # Extract parameters
+        model_config = config.get("model", {})
+        core_config = config.get("core", {})
+        data_config = config.get("data", {})
+        
+        # Get model parameters from config
+        model_version = core_config.get("model_version", "collaborative")
+        n_neighbors = model_config.get("n_neighbors", 20)
+        max_rated_items = model_config.get("max_rated_items", 50)
+        similarity_metric = model_config.get("similarity_metric", "cosine")
+        algorithm = model_config.get("algorithm", "brute")
+        n_jobs = model_config.get("n_jobs", -1)
+        features_dir = data_config.get("features_dir", os.path.join(project_root, "data/features"))
+        output_dir = data_config.get("output_dir", os.path.join(project_root, "models"))
+        
+        # Log configuration
+        logger.info(f"Training model with version: {model_version}")
+        logger.info(f"Parameters: n_neighbors={n_neighbors}, max_rated_items={max_rated_items}")
+        logger.info(f"Algorithm: {algorithm}, Similarity: {similarity_metric}")
         
         if self.user_item_matrix is None or self.book_ids is None:
             logger.error("Cannot train model: missing user_item_matrix or book_ids")
@@ -253,85 +239,63 @@ class CollaborativeRecommender(BaseRecommender):
         
     def recommend_for_user(self, user_id: int, n_recommendations: int = 10) -> List[int]:
         """
-        Generate book recommendations for a user based on collaborative filtering.
+        Generate recommendations for a specific user based on their highest-rated items.
         
-        Parameters
-        ----------
-        user_id : int
-            User ID to generate recommendations for
-        n_recommendations : int, optional
-            Number of recommendations to generate
+        Args:
+            user_id: ID of the user
+            n_recommendations: Number of recommendations to generate
             
-        Returns
-        -------
-        list
-            List of recommended book IDs
+        Returns:
+            list: List of recommended book IDs
         """
-        # Convert user_id to matrix index if needed
-        user_idx = user_id
-        if hasattr(self, 'user_id_to_index'):
-            if user_id not in self.user_id_to_index:
-                logger.warning(f"User {user_id} not found in training data")
-                return []
-            user_idx = self.user_id_to_index[user_id]
-        
-        # Get user profile
-        if user_idx >= self.user_item_matrix.shape[0]:
-            logger.warning(f"User index {user_idx} out of bounds")
+        if self.item_nn_model is None:
+            logger.error("Model not trained. Call fit() before making recommendations.")
             return []
-            
-        user_profile = self.user_item_matrix[user_idx].toarray().flatten()
         
-        # If user has no ratings, use popularity-based recommendations
-        if np.sum(user_profile) == 0:
-            logger.warning(f"User {user_id} has no ratings. Using popularity-based recommendations.")
-            # Fallback to overall popularity
-            item_popularity = self.user_item_matrix.sum(axis=0).A1
-            top_items = np.argsort(item_popularity)[::-1][:n_recommendations]
-            return [int(self.book_ids[i]) for i in top_items]
-            
-        # Get indices of books the user has already interacted with
-        already_interacted = np.where(user_profile > 0)[0]
-        
-        # Limit the number of user-rated items we consider to improve performance
-        if len(already_interacted) > self.max_rated_items:
-            # Sort by rating and take top rated items
-            top_ratings_idx = np.argsort(user_profile[already_interacted])[::-1][:self.max_rated_items]
-            already_interacted = already_interacted[top_ratings_idx]
-        
-        # Convert to set for faster lookups
-        already_interacted_set = set(already_interacted)
-        
-        # Use user profile to generate recommendations
-        candidate_scores = {}
-        
-        for book_idx in already_interacted:
-            # Skip if this book doesn't have pre-computed similarities
-            if book_idx not in self.item_similarity_matrix:
-                continue
+        try:
+            # Get the user's vector (list of ratings)
+            user_idx = user_id  # In our case, user_id is the index
+            if user_idx >= self.user_item_matrix.shape[0]:
+                logger.warning(f"User ID {user_id} not found in training data")
+                return []
                 
-            # Get pre-computed similar items
-            similar_items = self.item_similarity_matrix[book_idx]
-            item_indices = similar_items['indices']
-            item_similarities = similar_items['similarities']
+            user_vector = self.user_item_matrix[user_idx].toarray().reshape(-1)
             
-            # Score similar books based on similarity
-            for idx, sim in zip(item_indices, item_similarities):
-                if idx not in already_interacted_set:
-                    if idx not in candidate_scores:
-                        candidate_scores[idx] = 0
-                    # Weight similarity by user's rating
-                    candidate_scores[idx] += sim * user_profile[book_idx]
-        
-        # Sort candidates by score
-        sorted_candidates = sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
-        
-        # Return top N book IDs
-        recommended_indices = [idx for idx, _ in sorted_candidates[:n_recommendations]]
-        recommended_book_ids = [int(self.book_ids[i]) for i in recommended_indices]
-        
-        return recommended_book_ids
-    
+            # Find books the user has already rated, sorted by rating (highest first)
+            rated_items = np.where(user_vector > 0)[0]
+            rated_items_with_scores = [(idx, user_vector[idx]) for idx in rated_items]
+            rated_items_with_scores.sort(key=lambda x: x[1], reverse=True)
+            
+            # Take top N rated items
+            top_items = rated_items_with_scores[:5]  # Use top 5 items
+            
+            # Generate recommendations based on similar items
+            recommendations = {}
+            for item_idx, score in top_items:
+                if item_idx in self.item_similarity_matrix:
+                    similar_indices = self.item_similarity_matrix[item_idx]['indices']
+                    similar_scores = self.item_similarity_matrix[item_idx]['similarities']
+                    
+                    # Add weighted scores to recommendations dictionary
+                    for sim_idx, sim_score in zip(similar_indices, similar_scores):
+                        if sim_idx not in rated_items:  # Don't recommend already rated items
+                            if sim_idx not in recommendations:
+                                recommendations[sim_idx] = 0
+                            recommendations[sim_idx] += sim_score * score  # Weight by user's rating
+            
+            # Sort and get top recommendations
+            sorted_recs = sorted(recommendations.items(), key=lambda x: x[1], reverse=True)
+            top_indices = [idx for idx, _ in sorted_recs[:n_recommendations]]
+            
+            # Convert indices to book IDs
+            recommended_books = [self.book_ids[idx] for idx in top_indices]
+            
+            return recommended_books
+        except Exception as e:
+            logger.error(f"Error generating recommendations for user {user_id}: {e}")
+            return []
+
+
     def recommend_similar_books(self, book_id: int, n: int = 10):
         """
         Recommend books similar to a given book based on collaborative filtering.
@@ -382,7 +346,33 @@ class CollaborativeRecommender(BaseRecommender):
             logger.error(traceback.format_exc())
             return []
 
-
+def load_config(config_path="config/model_params.yaml"):
+    """
+    Load model configuration from YAML file
+    
+    Parameters
+    ----------
+    config_path : str
+        Path to the YAML configuration file
+        
+    Returns
+    -------
+    dict
+        Configuration dictionary with model parameters
+    """
+    try:
+        if config_path and os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                import yaml
+                config = yaml.safe_load(f)
+                logger.info(f"Loaded configuration from {config_path}")
+                return config
+        else:
+            logger.warning(f"Config file not found at {config_path}")
+            return {}
+    except Exception as e:
+        logger.error(f"Error loading config from {config_path}: {e}")
+        return {}
 ###################################################
 # Main Training Function                           #
 ###################################################
@@ -415,8 +405,8 @@ def train_model(config_path="config/model_params.yaml", model_version="collabora
         similarity_metric = model_config.get("similarity_metric", "cosine")
         algorithm = model_config.get("algorithm", "brute")
         n_jobs = model_config.get("n_jobs", -1)
-        features_dir = data_config.get("features_dir", "data/features")
-        output_dir = data_config.get("output_dir", "models")
+        features_dir = data_config.get("features_dir", os.path.join(project_root, "data/features"))
+        output_dir = data_config.get("output_dir", os.path.join(project_root, "models"))
         
         # Log configuration
         logger.info(f"Training model with version: {model_version}")
@@ -452,8 +442,10 @@ def train_model(config_path="config/model_params.yaml", model_version="collabora
         collaborative_model.fit()
         
         # Save the trained model
-        os.makedirs(output_dir, exist_ok=True)
-        model_path = os.path.join(output_dir, f'{model_version}.pkl')
+        # Convert relative path to absolute path using project_root
+        abs_output_dir = os.path.join(project_root, output_dir)
+        os.makedirs(abs_output_dir, exist_ok=True)
+        model_path = os.path.join(abs_output_dir, f'{model_version}.pkl')
         
         logger.info(f"Saving trained model to {model_path}")
         collaborative_model.save(model_path)
@@ -492,7 +484,7 @@ def main():
         if MLFLOW_AVAILABLE:
             try:
                 # Setup MLflow
-                setup_mlflow(experiment_name=f"collaborative_model_{args.model_version}")
+                setup_mlflow(repo_owner='pepperumo', repo_name='MLOps_book_recommender_system')
                 logger.info(f"MLflow tracking is enabled. Visit {get_dagshub_url()} to view experiments.")
                 
                 with mlflow.start_run(run_name=f"{args.model_version}_training"):
@@ -507,11 +499,11 @@ def main():
                         log_params_from_model(model)
                         
                         # Log model artifacts
-                        model_path = os.path.join('models', f"{args.model_version}.pkl")
+                        model_path = os.path.join(project_root, 'models', f"{args.model_version}.pkl")
                         mlflow.log_artifact(model_path, "model")
                         
                         # Save model config for reproducibility
-                        model_config_path = os.path.join('models', f"{args.model_version}_config.json")
+                        model_config_path = os.path.join(project_root, 'models', f"{args.model_version}_config.json")
                         os.makedirs(os.path.dirname(model_config_path), exist_ok=True)
                         
                         with open(model_config_path, 'w') as f:

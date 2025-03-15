@@ -11,8 +11,11 @@ import traceback
 from typing import Tuple, List, Dict, Optional, Union, Any
 from datetime import datetime
 
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
+
 # Set up logging
-log_dir = os.path.join('logs')
+log_dir = os.path.join(project_root, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_filename = os.path.join(log_dir, f'process_data_{timestamp}.log')
@@ -26,6 +29,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('process_data')
+logger.info(f"Project root: {project_root}")
+
 
 def load_book_data(file_path: str) -> Optional[pd.DataFrame]:
     """
@@ -290,7 +295,7 @@ def train_test_split(df: pd.DataFrame, test_size: float = 0.2,
     return train_df, test_df
 
 
-def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processed') -> int:
+def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processed'):
     """
     Main function to load, clean, merge and save data.
     
@@ -306,58 +311,75 @@ def main(input_filepath: str = 'data/raw', output_filepath: str = 'data/processe
     int
         Exit code (0 for success, non-zero for failure)
     """
-    logger.info('Making final data set from raw data.')
-    
-    # Load books data
-    books_df = load_book_data(input_filepath)
-    
-    # If no books data, exit
-    if books_df is None or len(books_df) == 0:
-        logger.error("No books data available. Please generate books data first.")
+    try:
+        # Convert relative paths to absolute paths
+        abs_input_filepath = os.path.join(project_root, input_filepath)
+        abs_output_filepath = os.path.join(project_root, output_filepath)
+        
+        logger.info(f"Processing data from {abs_input_filepath} to {abs_output_filepath}")
+        
+        # Load data from raw files
+        logger.info(f"Loading book data from {abs_input_filepath}")
+        books_df = load_book_data(abs_input_filepath)
+        if books_df is None:
+            logger.error("Failed to load book data")
+            return 1
+        
+        logger.info(f"Loading ratings data from {abs_input_filepath}")
+        ratings_df = load_ratings_data(abs_input_filepath)
+        if ratings_df is None:
+            logger.error("Failed to load ratings data")
+            return 1
+            
+        # Clean data
+        logger.info("Cleaning book data")
+        books_df = clean_book_data(books_df)
+        logger.info(f"Cleaned book data shape: {books_df.shape}")
+        
+        logger.info("Cleaning ratings data")
+        ratings_df = clean_ratings_data(ratings_df)
+        logger.info(f"Cleaned ratings data shape: {ratings_df.shape}")
+        
+        # Merge data
+        logger.info("Merging book and ratings data")
+        merged_df = merge_and_prepare_data(books_df, ratings_df)
+        logger.info(f"Merged data shape: {merged_df.shape}")
+        
+        # Split data into train and test sets
+        logger.info("Splitting data into train and test sets")
+        train_df, test_df = train_test_split(merged_df, test_size=0.2)
+        logger.info(f"Train data shape: {train_df.shape}")
+        logger.info(f"Test data shape: {test_df.shape}")
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(abs_output_filepath, exist_ok=True)
+        
+        # Save data
+        logger.info(f"Saving processed data to {abs_output_filepath}")
+        train_df.to_csv(os.path.join(abs_output_filepath, 'merged_train.csv'), index=False)
+        test_df.to_csv(os.path.join(abs_output_filepath, 'merged_test.csv'), index=False)
+        books_df.to_csv(os.path.join(abs_output_filepath, 'cleaned_books.csv'), index=False)
+        
+        # Create marker file to indicate completion
+        with open(os.path.join(abs_output_filepath, "processing_complete"), 'w') as f:
+            f.write(f"Data processing completed at {datetime.now().isoformat()}")
+        
+        logger.info("Processing complete")
+        return 0
+    except Exception as e:
+        logger.error(f"An error occurred: {str(e)}")
+        logger.debug(traceback.format_exc())
         return 1
-    
-    # Load ratings data
-    ratings_df = load_ratings_data(input_filepath)
-    
-    # If no ratings data, exit
-    if ratings_df is None or len(ratings_df) == 0:
-        logger.error("No ratings data available. Please generate ratings data first.")
-        return 1
-    
-    # Clean data
-    books_df = clean_book_data(books_df)
-    ratings_df = clean_ratings_data(ratings_df)
-    
-    # Merge the data
-    merged_df = merge_and_prepare_data(books_df, ratings_df)
-    
-    # Split into train and test
-    train_df, test_df = train_test_split(merged_df, test_size=0.2, random_state=42)
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(output_filepath, exist_ok=True)
-    
-    # Save processed data
-    books_df.to_csv(os.path.join(output_filepath, 'books.csv'), index=False)
-    ratings_df.to_csv(os.path.join(output_filepath, 'ratings.csv'), index=False)
-    merged_df.to_csv(os.path.join(output_filepath, 'merged.csv'), index=False)
-    train_df.to_csv(os.path.join(output_filepath, 'merged_train.csv'), index=False)
-    test_df.to_csv(os.path.join(output_filepath, 'merged_test.csv'), index=False)
-    
-    logger.info('Data processing completed successfully.')
-    return 0
 
 
 @click.command()
-@click.option('--input-filepath', type=click.Path(exists=True), default='data/raw',
-              help='Path to the directory containing input data files')
-@click.option('--output-filepath', type=click.Path(), default='data/processed',
-              help='Directory to save processed data')
+@click.argument('input_filepath', type=click.Path(exists=True), default='data/raw')
+@click.argument('output_filepath', type=click.Path(), default='data/processed')
 def cli(input_filepath, output_filepath):
     """ Runs data processing scripts to turn raw data from (../raw) into
         cleaned data ready to be analyzed (saved in ../processed).
     """
-    sys.exit(main(input_filepath, output_filepath))
+    main(input_filepath, output_filepath)
 
 
 if __name__ == "__main__":

@@ -8,9 +8,13 @@ import traceback
 from typing import Tuple, List, Dict, Optional, Union, Any
 from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
+from pathlib import Path
+
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
 
 # Set up logging
-log_dir = os.path.join('logs')
+log_dir = os.path.join(project_root, 'logs')
 os.makedirs(log_dir, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_filename = os.path.join(log_dir, f'build_features_{timestamp}.log')
@@ -24,6 +28,7 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger('build_features')
+logger.info(f"Project root: {project_root}")
 
 
 def read_ratings(data_dir: str = 'data/processed') -> Tuple[sp.csr_matrix, np.ndarray, np.ndarray]:
@@ -161,36 +166,42 @@ def main(data_dir: str = 'data') -> int:
     int
         Exit code
     """
-    logger.info(f"Starting build_features.py")
-    
     try:
-        processed_dir = os.path.join(data_dir, 'processed')
-        features_dir = os.path.join(data_dir, 'features')
+        # Convert to absolute paths
+        abs_data_dir = os.path.join(project_root, data_dir)
+        processed_dir = os.path.join(abs_data_dir, 'processed')
+        features_dir = os.path.join(abs_data_dir, 'features')
         
-        # Create output directory
+        logger.info(f"Building features from processed data in {processed_dir}")
+        
+        # Create features directory if it doesn't exist
         os.makedirs(features_dir, exist_ok=True)
         
-        # Read ratings and create user-item matrix
-        logger.info("Reading ratings and creating user-item matrix")
+        # Generate the sparse user-item matrix
         user_item_matrix, user_ids, book_ids = read_ratings(processed_dir)
         
         if user_item_matrix.shape[0] == 0 or user_item_matrix.shape[1] == 0:
             logger.error("Failed to create user-item matrix")
             return 1
-        
-        # Save user-item matrix
-        sp.save_npz(os.path.join(features_dir, 'user_item_matrix.npz'), 
-                    user_item_matrix)
-        
-        # Save book IDs
+            
+        # Save the matrix and IDs to the features directory
+        from scipy.sparse import save_npz
+        save_npz(os.path.join(features_dir, 'user_item_matrix.npz'), user_item_matrix)
+        np.save(os.path.join(features_dir, 'user_ids.npy'), user_ids)
         np.save(os.path.join(features_dir, 'book_ids.npy'), book_ids)
         
-        logger.info(f"Successfully built and saved features to {features_dir}")
+        logger.info(f"User-item matrix shape: {user_item_matrix.shape}")
+        logger.info(f"Number of users: {len(user_ids)}")
+        logger.info(f"Number of books: {len(book_ids)}")
         
+        # Create a marker file to indicate completion
+        with open(os.path.join(features_dir, "features_complete"), 'w') as f:
+            f.write(f"Feature building completed at {datetime.now().isoformat()}")
+        
+        logger.info(f"Features saved to {features_dir}")
         return 0
-    
     except Exception as e:
-        logger.error(f"Unhandled exception in main: {e}")
+        logger.error(f"An error occurred: {str(e)}")
         logger.debug(traceback.format_exc())
         return 1
 

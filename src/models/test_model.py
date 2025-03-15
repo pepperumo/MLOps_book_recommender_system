@@ -472,7 +472,7 @@ def main() -> int:
         logger.info("Starting prediction tests for collaborative filtering model")
         
         # Create results directory
-        results_dir = 'results'
+        results_dir = os.path.join('data', 'results')
         os.makedirs(results_dir, exist_ok=True)
         
         # Load test data
@@ -506,18 +506,6 @@ def main() -> int:
         
         # Generate visualizations
         generate_visualization(summary)
-        
-        # Save results to JSON
-        results_path = os.path.join(results_dir, f'prediction_test_results_{timestamp}.json')
-        with open(results_path, 'w') as f:
-            json.dump({
-                'user_results': user_results,
-                'similar_book_results': similar_book_results,
-                'cold_start_results': cold_start_results,
-                'summary': summary
-            }, f, indent=2, default=str)
-        
-        logger.info(f"Test results saved to {results_path}")
         
         return 0
         
