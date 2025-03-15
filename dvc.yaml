@@ -2,34 +2,43 @@
 
 stages:
   retrieve_data:
-    cmd: python src/data/retrieve_raw_data.py
+    cmd: python -m src.data.retrieve_raw_data
     deps:
       - src/data/retrieve_raw_data.py
-    
+    outs:
+      - data/raw  
+
   process_data:
-    cmd: python src/data/process_data.py
+    cmd: python -m src.data.process_data
     deps:
       - src/data/process_data.py
-      - data
+      - data/raw
+    outs:
+      - data/processed
     
   build_features:
-    cmd: python src/features/build_features.py
+    cmd: python -m src.features.build_features
     deps:
       - src/features/build_features.py
-      - data
+      - data/processed
+    outs:
+      - data/features
     
   train_model:
-    cmd: python src/models/train_model.py --config config/model_params.yaml
+    cmd: python -m src.models.train_model --config config/model_params.yaml
     deps:
       - src/models/train_model.py
       - config/model_params.yaml
-      - data
+      - data/features
     outs:
       - models/collaborative.pkl
+      - models/collaborative_config.json
       
   evaluate_model:
-    cmd: python src/models/evaluate_model.py --model-path models/collaborative.pkl
+    cmd: python -m src.models.evaluate_model --model-path models/collaborative.pkl
     deps:
       - src/models/evaluate_model.py
       - models/collaborative.pkl
-      - data
+      - data/processed/merged_test.csv
+    outs:
+      - data/results/evaluation_results.csv
