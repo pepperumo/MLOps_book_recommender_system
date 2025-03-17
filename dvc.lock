@@ -70,12 +70,12 @@ stages:
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: a4263279f56938dad8d8e33ae24c99c5
-      size: 14988511
+      md5: fb2e797c4b61e12359379ad294d410be
+      size: 14973618
       isexec: true
     - path: models/collaborative_config.json
       hash: md5
-      md5: acadadb918a38f0520d3a050ee1cb557
+      md5: a6819f1c980776f148d0a0deb56df4ac
       size: 403
       isexec: true
   evaluate_model:
