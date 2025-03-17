@@ -59,8 +59,8 @@ stages:
       isexec: true
     - path: data/features
       hash: md5
-      md5: 1badbbf38ca2a71bd4065676ea3c666b.dir
-      size: 660944
+      md5: 700de33fbf03756da046801e76b2eaac.dir
+      size: 660273
       nfiles: 4
     - path: src/models/train_model.py
       hash: md5
@@ -70,12 +70,12 @@ stages:
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: aed7c9941c0697cfdab92d913c9e384d
-      size: 15024691
+      md5: cfac4b0fcd05051cc4436d459f051a70
+      size: 15015067
       isexec: true
     - path: models/collaborative_config.json
       hash: md5
-      md5: 5aedbfe0574376e8044014be6003e53c
+      md5: 2a8227fb304fad7857c66711108ae9ea
       size: 403
       isexec: true
   evaluate_model:
