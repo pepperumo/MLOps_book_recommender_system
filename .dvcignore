@@ -11,10 +11,7 @@ streamlit/
 *.pyc
 __pycache__/
 
-# Ignore Git files (these are managed by Git)
-.git/
-.gitignore
-.dvcignore
+
 
 # Optionally, ignore notebooks if they are not part of the artifacts you want to version with DVC
 *.ipynb
