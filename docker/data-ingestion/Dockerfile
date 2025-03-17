@@ -2,23 +2,27 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Copy Docker-specific requirements
-COPY docker-requirements.txt .
-RUN pip install --no-cache-dir -r docker-requirements.txt
+# Install necessary system utilities (dos2unix)
+RUN apt-get update && apt-get install -y --no-install-recommends dos2unix \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the minimal ingestion-specific requirements
+COPY docker/data-ingestion/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/
 COPY setup.py .
 
-# Create directories for data
-RUN mkdir -p data/raw data/processed data/features logs
+# Create directories for data and logs
+RUN mkdir -p data/processed data/features logs
 
 # Set environment variables
 ENV PYTHONPATH=/app
 
-# Create an entry point script
-COPY docker/data-ingestion/entrypoint.sh .
-RUN chmod +x entrypoint.sh
+# Copy and fix the entrypoint script
+COPY docker/data-ingestion/entrypoint.sh /app/entrypoint.sh
+RUN dos2unix /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-# Run the data processing pipeline
-ENTRYPOINT ["./entrypoint.sh"]
+# Use absolute path for entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]

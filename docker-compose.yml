@@ -5,13 +5,12 @@ services:
     build:
       context: .
       dockerfile: docker/data-retrieval/Dockerfile
+    container_name: data-retrieval-container
     volumes:
       - ./data:/app/data
-    networks:
-      - recommender-network
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["keep-alive"]  # Keep container running
+    command: ["keep-alive"]  # Keeps container running
     healthcheck:
       test: ["CMD", "test", "-f", "/app/data/raw/retrieval_complete"]
       interval: 30s
@@ -23,16 +22,15 @@ services:
     build:
       context: .
       dockerfile: docker/data-ingestion/Dockerfile
+    container_name: data-ingestion-container
     volumes:
       - ./data:/app/data
-    networks:
-      - recommender-network
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["keep-alive"]
     depends_on:
       data-retrieval:
         condition: service_healthy
-    environment:
-      - PYTHONUNBUFFERED=1
-    command: ["keep-alive"]  # Keep container running
     healthcheck:
       test: ["CMD", "test", "-f", "/app/data/ingestion_complete"]
       interval: 30s
@@ -44,70 +42,61 @@ services:
     build:
       context: .
       dockerfile: docker/model-training/Dockerfile
+    container_name: model-training-container
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GIT_PYTHON_GIT_EXECUTABLE=/usr/bin/git
+      - GIT_PYTHON_REFRESH=quiet
     volumes:
       - ./data:/app/data
       - ./models:/app/models
-    networks:
-      - recommender-network
+      - ./logs:/app/logs
+      - ./src:/app/src
+      - ./.git:/app/.git
+      - ./config:/app/config
+
     depends_on:
       data-ingestion:
         condition: service_healthy
-    environment:
-      - PYTHONUNBUFFERED=1
-    # Using entrypoint.sh which should call process_data.py instead of make_dataset.py
-    command: ["./entrypoint.sh", "keep-alive"]
+    command: ["keep-alive"]
     healthcheck:
-      test: ["CMD", "test", "-f", "/app/models/training_complete"]
+      test: ["CMD", "test", "-f", "/app/models/collaborative.pkl"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
 
-  prediction-api:
+  dvc:
     build:
       context: .
-      dockerfile: docker/prediction-api/Dockerfile
-    volumes:
-      - ./data:/data
-      - ./models:/models
-    ports:
-      - "8000:8000"
-    networks:
-      - recommender-network
-    depends_on:
-      model-training:
-        condition: service_completed_successfully
+      dockerfile: docker/dvc/Dockerfile
+    container_name: dvc-container
     environment:
       - PYTHONUNBUFFERED=1
+      - GIT_USER_NAME=pepperumo
+      - GIT_USER_EMAIL=pepperumo@gmail.com
+      - GIT_BRANCH=dev
+      - GIT_REMOTE_URL=https://github.com/pepperumo/MLOps_book_recommender_system.git
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./.git:/app/.git
+      - ./.dvc:/app/.dvc
+      - ./dvc.yaml:/app/dvc.yaml
+      - ./dvc.lock:/app/dvc.lock
+    depends_on:
+      model-training:
+        condition: service_healthy
+    command: ["keep-alive"]
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      test: ["CMD", "test", "-f", "/app/logs/dvc_complete"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 15s
-
-  streamlit-ui:
-    build:
-      context: ./streamlit
-      dockerfile: Dockerfile
-    ports:
-      - "8501:8501"
-    networks:
-      - recommender-network
-    depends_on:
-      prediction-api:
-        condition: service_healthy
-    environment:
-      - PYTHONUNBUFFERED=1
-      - API_BASE_URL=http://prediction-api:8000
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
+      start_period: 30s
 
 networks:
-  recommender-network:
+  default:
     driver: bridge

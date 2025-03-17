@@ -110,3 +110,6 @@ logs/
 
 # Flask
 node_modules/
+
+
+.windsurfrules
