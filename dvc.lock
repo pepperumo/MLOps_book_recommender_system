@@ -59,8 +59,8 @@ stages:
       isexec: true
     - path: data/features
       hash: md5
-      md5: 700de33fbf03756da046801e76b2eaac.dir
-      size: 660273
+      md5: c77b8f85acc9e640abfcc4d09f36a94e.dir
+      size: 658941
       nfiles: 4
     - path: src/models/train_model.py
       hash: md5
