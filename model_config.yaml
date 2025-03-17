@@ -1,0 +1,13 @@
+algorithm: brute
+config_file: config/model_params.yaml
+matrix_density: 0.6868530701754386
+max_rated_items: 50
+model_type: collaborative
+model_version: collaborative
+n_jobs: -1
+n_neighbors: 20
+num_items: 456
+num_users: 2000
+similarity_metric: cosine
+training_timestamp: '2025-03-13 20:59:24'
+user_item_matrix_shape: 2000x456

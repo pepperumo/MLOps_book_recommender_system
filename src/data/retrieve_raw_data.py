@@ -1,142 +1,369 @@
-# -*- coding: utf-8 -*-
+"""
+Script to retrieve book data from Google Books API and create a dataset for the recommender system
+"""
 import os
-import sys
+import json
+import random
 import pandas as pd
 import requests
 import logging
 import time
-import random
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
 from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
+from typing import List, Dict, Optional, Tuple
+import itertools
+import numpy as np
 import click
+from datetime import datetime
 
 # Set up logging
-log_dir = os.path.join('logs')
-os.makedirs(log_dir, exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = os.path.join(log_dir, f'retrieve_raw_data_{timestamp}.log')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("retrieve_from_google")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler(sys.stdout)
+# Determine project root directory
+project_root = Path(__file__).parent.parent.parent.absolute()
+logger.info(f"Project root: {project_root}")
+
+# Google Books API constants
+GOOGLE_API_KEY = "AIzaSyAfBBcsfRQWfwSn9csJJjqoCxqPRZmSDOE"
+BASE_URL = "https://www.googleapis.com/books/v1/volumes"
+BATCH_SIZE = 40  # Google Books API allows up to 40 results per page
+RATE_LIMIT_DELAY = 1  # Seconds to wait between API calls to avoid rate limiting
+
+
+def get_books(limit: int = 500) -> List[Dict]:
+    """
+    Retrieve book data from Google Books API
+    
+    Args:
+        limit: Maximum number of books to retrieve
+        
+    Returns:
+        List of book dictionaries with data from the API
+    """
+    logger.info(f"Retrieving up to {limit} books from Google Books API")
+    books = []
+    
+    # Statistics for logging
+    total_books_retrieved = 0
+    total_books_with_images = 0
+    total_books_without_images = 0
+    
+    # Use a mix of popular search terms to get a diverse set of books
+    search_terms = [
+        "subject:fiction",
+        "subject:fantasy",
+        "subject:mystery",
+        "subject:romance",
+        "subject:science fiction",
+        "subject:thriller",
+        "subject:historical fiction",
+        "subject:horror",
+        "subject:adventure",
+        "subject:classics",
+        "subject:young adult",
+        "subject:crime",
+        "subject:biography",
+        "subject:history",
+        "subject:self-help",
+        "subject:science",
+        "subject:psychology",
+        "subject:business",
+        "subject:comics",
+        "subject:poetry",
+        "subject:art",
+        "subject:philosophy",
+        "subject:travel",
+        "subject:religion",
+        "subject:memoir",
+        "subject:children",
+        "inauthor:stephen king",
+        "inauthor:j.k. rowling",
+        "inauthor:agatha christie",
+        "inauthor:james patterson",
+        "inauthor:dan brown",
+        "inauthor:john grisham",
+        "inauthor:george r.r. martin",
+        "inauthor:paulo coelho",
+        "inauthor:haruki murakami",
+        "inauthor:jane austen",
+        "inauthor:mark twain"
     ]
-)
-logger = logging.getLogger('retrieve_raw_data')
-
-# Hardcover API URL
-HARDCOVER_API_URL = "https://api.hardcover.app/v1/graphql"
-
-# Hardcoded API key (for convenience)
-DEFAULT_API_KEY = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXJzaW9uIjoiNyIsImlkIjozMDg4OCwiYXBwbGljYXRpb25JZCI6MiwibG9nZ2VkSW4iOnRydWUsInN1YiI6IjMwODg4IiwiaWF0IjoxNzQxNzI1OTAxLCJleHAiOjE3NDQxNDU0MDEsImh0dHBzOi8vaGFzdXJhLmlvL2p3dC9jbGFpbXMiOnsieC1oYXN1cmEtYWxsb3dlZC1yb2xlcyI6WyJ1c2VyIl0sIngtaGFzdXJhLWRlZmF1bHQtcm9sZSI6InVzZXIiLCJ4LWhhc3VyYS1yb2xlIjoidXNlciIsIlgtaGFzdXJhLXVzZXItaWQiOiIzMDg4OCJ9fQ.fBA1LweEx6yWDV-vlw0LSo9o3nHmljvOLSgN39fhgWM"
-
-def execute_query(query: str, api_key: str, variables: Optional[Dict] = None) -> Dict:
-    """Execute a GraphQL query against the Hardcover API"""
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": api_key
-    }
     
-    payload = {"query": query}
-    if variables:
-        payload["variables"] = variables
+    # Multiple language filters to increase diversity
+    language_filters = ["&langRestrict=en", "&langRestrict=es", "&langRestrict=fr", "&langRestrict=de", "&langRestrict=it", "&langRestrict=zh"]
     
-    try:
-        logger.info(f"Sending request to Hardcover API")
-        response = requests.post(HARDCOVER_API_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except Exception as e:
-        logger.error(f"API request failed: {e}")
-        return {"errors": [{"message": str(e)}]}
-
-def get_books(api_key: str, limit: int = 50) -> List[Dict]:
-    """Get books from the Hardcover API using the limited available fields"""
-    logger.info(f"Fetching books from API, total limit: {limit}")
+    # Use different search strategies
+    batch_num = 0
+    max_attempts = limit * 3  # Safety limit on attempts
+    attempts = 0
     
-    all_books = []
-    batch_size = 50  # API batch size
-    num_batches = (limit + batch_size - 1) // batch_size  # Ceiling division
-    
-    for batch in range(num_batches):
-        if len(all_books) >= limit:
+    # First try all search terms without additional filters
+    for search_term in search_terms:
+        if len(books) >= limit:
             break
             
-        logger.info(f"Fetching batch {batch+1}/{num_batches}")
-        
-        # Simple query with only the fields we know are available
-        query = f"""
-        query {{
-          books(limit: {batch_size}) {{
-            id
-            title
-          }}
-        }}
-        """
-        
-        result = execute_query(query, api_key)
-        
-        if "errors" in result:
-            logger.error(f"Error fetching books: {result['errors']}")
-            # Continue with next batch instead of returning empty
-            time.sleep(1)  # Add delay to avoid rate limiting
-            continue
-        
-        try:
-            books = result["data"]["books"]
-            logger.info(f"Retrieved {len(books)} books in this batch")
+        if attempts >= max_attempts:
+            logger.warning(f"Reached maximum attempt limit of {max_attempts}")
+            break
             
-            # Add to overall books list
-            all_books.extend(books)
-            
-            # Add delay to avoid rate limiting
-            if batch < num_batches - 1:
-                time.sleep(1)
+        batch_num += 1
+        attempts += 1
+        
+        logger.info(f"Attempt {attempts}: Fetching books for '{search_term}'")
+        
+        params = {
+            "q": search_term,
+            "maxResults": BATCH_SIZE,
+            "key": GOOGLE_API_KEY,
+            "printType": "books",
+            "orderBy": "relevance"
+        }
+        
+        # Try getting books with this search term
+        batch_books = fetch_batch(params, batch_num, total_books_retrieved, total_books_with_images, total_books_without_images)
+        
+        # Update statistics
+        total_books_retrieved += batch_books["total_retrieved"]
+        total_books_with_images += batch_books["with_images"]
+        total_books_without_images += batch_books["without_images"]
+        
+        # Add books
+        books.extend(batch_books["books"])
+    
+    # If we still need more books, try with language filters
+    if len(books) < limit:
+        for search_term in search_terms:
+            for lang_filter in language_filters:
+                if len(books) >= limit:
+                    break
+                    
+                if attempts >= max_attempts:
+                    logger.warning(f"Reached maximum attempt limit of {max_attempts}")
+                    break
+                    
+                batch_num += 1
+                attempts += 1
                 
-        except (KeyError, TypeError) as e:
-            logger.error(f"Error parsing book results in batch {batch+1}: {e}")
-        
-    # Trim to requested limit
-    all_books = all_books[:limit]
-    logger.info(f"Total books retrieved: {len(all_books)}")
+                lang_code = lang_filter.split('=')[1]
+                logger.info(f"Attempt {attempts}: Fetching books for '{search_term}' in language {lang_code}")
+                
+                # Construct full query with language filter
+                full_query = f"{search_term}{lang_filter}"
+                
+                params = {
+                    "q": search_term,
+                    "maxResults": BATCH_SIZE,
+                    "key": GOOGLE_API_KEY,
+                    "langRestrict": lang_code,
+                    "printType": "books",
+                    "orderBy": "relevance"
+                }
+                
+                # Try getting books with this search term and language
+                batch_books = fetch_batch(params, batch_num, total_books_retrieved, total_books_with_images, total_books_without_images)
+                
+                # Update statistics
+                total_books_retrieved += batch_books["total_retrieved"]
+                total_books_with_images += batch_books["with_images"]
+                total_books_without_images += batch_books["without_images"]
+                
+                # Add books
+                books.extend(batch_books["books"])
     
-    return all_books
+    logger.info(f"Total books retrieved: {total_books_retrieved}")
+    logger.info(f"Total books with images: {total_books_with_images}")
+    logger.info(f"Total books without images: {total_books_without_images}")
+    
+    if total_books_retrieved > 0:
+        image_percentage = total_books_with_images / total_books_retrieved * 100
+        logger.info(f"Percentage of books with images: {image_percentage:.2f}%")
+    
+    logger.info(f"Final book count with valid images: {len(books)}")
+    
+    # Limit to requested number
+    if len(books) > limit:
+        books = books[:limit]
+        logger.info(f"Trimmed to {limit} books as requested")
+    elif len(books) < limit:
+        logger.warning(f"Could only retrieve {len(books)} books with valid images instead of the requested {limit}")
+        logger.info("To get more books, try increasing the limit or adding more search terms")
+    
+    return books
 
-def supplement_book_data(books: List[Dict]) -> List[Dict]:
-    """Add missing fields to match the structure of the original CSV"""
-    supplemented_books = []
+
+def fetch_batch(params, batch_num, total_retrieved, total_with_images, total_without_images):
+    """
+    Fetch a batch of books from the Google Books API
     
-    # Common genres for randomly assigning to books
+    Args:
+        params: API request parameters
+        batch_num: Current batch number
+        total_retrieved: Running total of retrieved books
+        total_with_images: Running total of books with images
+        total_without_images: Running total of books without images
+        
+    Returns:
+        Dictionary with batch statistics and books
+    """
+    result = {
+        "books": [],
+        "total_retrieved": 0,
+        "with_images": 0,
+        "without_images": 0
+    }
+    
+    response = requests.get(BASE_URL, params=params)
+    
+    if response.status_code == 200:
+        data = response.json()
+        
+        if "items" in data:
+            batch_books = data["items"]
+            result["total_retrieved"] = len(batch_books)
+            logger.info(f"Retrieved {len(batch_books)} books in batch {batch_num}")
+            
+            # Process each book to extract relevant data
+            batch_books_with_images = 0
+            batch_books_without_images = 0
+            
+            for book in batch_books:
+                # Skip books without volume info
+                volume_info = book.get("volumeInfo", {})
+                if not volume_info:
+                    continue
+                
+                # Check if book has images
+                if "imageLinks" not in volume_info:
+                    title = volume_info.get('title', 'Unknown')
+                    book_id = book.get('id', 'Unknown')
+                    logger.info(f"Skipping book '{title}' (ID: {book_id}) due to missing image")
+                    batch_books_without_images += 1
+                    continue
+                
+                # Add the book to our collection
+                result["books"].append(book)
+                batch_books_with_images += 1
+            
+            result["with_images"] = batch_books_with_images
+            result["without_images"] = batch_books_without_images
+            
+            logger.info(f"Batch {batch_num} statistics: {batch_books_with_images} books with images, {batch_books_without_images} books without images")
+        else:
+            logger.warning(f"No items found in batch {batch_num}")
+    else:
+        logger.error(f"Error fetching batch {batch_num}: {response.status_code}")
+        logger.error(response.text)
+        # Add delay to avoid rate limiting
+        time.sleep(RATE_LIMIT_DELAY * 2)
+    
+    # Add delay to avoid rate limiting
+    time.sleep(RATE_LIMIT_DELAY)
+    
+    return result
+
+
+def extract_book_data(books: List[Dict]) -> List[Dict]:
+    """
+    Extract relevant fields from the Google Books API response
+    
+    Args:
+        books: List of book dictionaries from the API
+        
+    Returns:
+        List of dictionaries with standardized book data
+    """
+    logger.info("Extracting standardized book data")
+    
+    standardized_books = []
+    data_sources = {
+        "real": set(),         # Fields directly from API
+        "synthetic": set(),    # Fields generated synthetically
+        "mixed": set()         # Fields where some books use real data, others synthetic
+    }
+    
+    # Common genres for randomly assigning to books when not available from API
     genres = ["Fantasy", "Science Fiction", "Mystery", "Romance", "Thriller", 
               "Historical Fiction", "Young Adult", "Literary Fiction", "Horror", 
               "Non-fiction", "Biography", "Self-help"]
     
     for i, book in enumerate(books):
         book_id = i + 1
+        volume_info = book.get("volumeInfo", {})
         
-        # Generate random authors
-        num_authors = random.randint(1, 3)
-        authors = []
-        for _ in range(num_authors):
-            first = random.choice(["John", "Sarah", "Michael", "Emily", "David", "Jennifer", "Robert", "Michelle", "James", "Linda"])
-            last = random.choice(["Smith", "Johnson", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor", "Anderson", "Thomas"])
-            authors.append(f"{first} {last}")
+        # Basic book information
+        title = volume_info.get("title", f"Unknown Book {book_id}")
         
-        # Join author names
-        author_string = ", ".join(authors)
+        # Extract image URL
+        image_links = volume_info.get("imageLinks", {})
+        image_url = None
+        # Try to get the largest available image
+        for size in ["extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail"]:
+            if size in image_links:
+                image_url = image_links[size]
+                break
         
-        # Generate random year between 1900 and 2024
-        year = random.randint(1900, 2024)
+        # If no image URL was found, skip this book
+        if not image_url:
+            continue
+            
+        # Standardize image URL to https
+        if image_url.startswith("http:"):
+            image_url = "https" + image_url[4:]
+            
+        # AUTHOR HANDLING
+        authors = volume_info.get("authors", [])
         
-        # Generate random rating between 1.0 and 5.0
-        avg_rating = round(random.uniform(1.0, 5.0), 2)
+        if authors:
+            author_string = ", ".join(authors)
+            data_sources["real"].add("authors")
+        else:
+            # Generate synthetic authors
+            num_authors = random.randint(1, 3)
+            synthetic_authors = []
+            for _ in range(num_authors):
+                first = random.choice(["John", "Sarah", "Michael", "Emily", "David", "Jennifer", "Robert", "Michelle", "James", "Linda"])
+                last = random.choice(["Smith", "Johnson", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor", "Anderson", "Thomas"])
+                synthetic_authors.append(f"{first} {last}")
+            author_string = ", ".join(synthetic_authors)
+            data_sources["synthetic"].add("authors")
         
-        # Generate random ratings count between 10 and 10000
-        ratings_count = random.randint(10, 10000)
+        # YEAR/PUBLICATION DATE HANDLING
+        published_date = volume_info.get("publishedDate")
+        
+        if published_date:
+            # Try to extract just the year from the date
+            try:
+                import re
+                year_match = re.search(r'\b(19|20)\d{2}\b', published_date)
+                if year_match:
+                    year = int(year_match.group(0))
+                else:
+                    year = int(published_date[:4])  # Assume format starts with year
+                data_sources["real"].add("publication_year")
+            except (ValueError, TypeError):
+                year = random.randint(1900, 2024)
+                data_sources["synthetic"].add("publication_year")
+        else:
+            year = random.randint(1900, 2024)
+            published_date = f"{random.randint(1, 12)}/{random.randint(1, 28)}/{year}"
+            data_sources["synthetic"].add("publication_year")
+            data_sources["synthetic"].add("published_date")
+        
+        # RATINGS HANDLING
+        avg_rating = volume_info.get("averageRating")
+        ratings_count = volume_info.get("ratingsCount")
+        
+        if avg_rating is not None:
+            data_sources["real"].add("avg_rating")
+        else:
+            avg_rating = round(random.uniform(1.0, 5.0), 2)
+            data_sources["synthetic"].add("avg_rating")
+            
+        if ratings_count is not None:
+            data_sources["real"].add("ratings_count")
+        else:
+            ratings_count = random.randint(10, 10000)
+            data_sources["synthetic"].add("ratings_count")
         
         # Calculate individual rating counts
         if avg_rating >= 4.5:
@@ -151,264 +378,299 @@ def supplement_book_data(books: List[Dict]) -> List[Dict]:
             dist = [0.30, 0.25, 0.20, 0.15, 0.10]
         
         rating_counts = [int(ratings_count * p) for p in dist]
+        data_sources["synthetic"].add("rating_distribution")
         
         # Ensure the total matches the ratings count
         diff = ratings_count - sum(rating_counts)
         if diff > 0:
             rating_counts[-1] += diff
         
-        # Pick 1-3 random genres
-        num_genres = random.randint(1, 3)
-        book_genres = random.sample(genres, num_genres)
-        genre_string = ", ".join(book_genres)
+        # GENRES HANDLING
+        categories = volume_info.get("categories", [])
         
-        # Generate a random ISBN (10 digits) and ISBN13 (13 digits)
-        isbn = ''.join([str(random.randint(0, 9)) for _ in range(10)])
-        isbn13 = ''.join([str(random.randint(0, 9)) for _ in range(13)])
+        if categories:
+            genre_string = ", ".join(categories)
+            data_sources["real"].add("genres")
+        else:
+            num_genres = random.randint(1, 3)
+            book_genres = random.sample(genres, num_genres)
+            genre_string = ", ".join(book_genres)
+            data_sources["synthetic"].add("genres")
         
-        # Create a placeholder image URL
-        image_url = f"https://example.com/bookcovers/{book_id}.jpg"
-        small_image_url = f"https://example.com/bookcovers/small/{book_id}.jpg"
+        # ISBN HANDLING
+        industry_identifiers = volume_info.get("industryIdentifiers", [])
+        isbn = ""
+        isbn13 = ""
         
-        # Generate a random description
-        description = f"This is a fictional description for the book '{book['title']}' by {author_string}."
+        for identifier in industry_identifiers:
+            id_type = identifier.get("type", "")
+            if id_type == "ISBN_10":
+                isbn = identifier.get("identifier", "")
+                data_sources["real"].add("isbn")
+            elif id_type == "ISBN_13":
+                isbn13 = identifier.get("identifier", "")
+                data_sources["real"].add("isbn13")
         
-        # Always use English language code
-        language = "eng"
+        # Generate synthetic ISBNs if not available from API
+        if not isbn:
+            isbn = ''.join([str(random.randint(0, 9)) for _ in range(10)])
+            data_sources["synthetic"].add("isbn")
+        if not isbn13:
+            isbn13 = ''.join([str(random.randint(0, 9)) for _ in range(13)])
+            data_sources["synthetic"].add("isbn13")
         
-        # Create the supplemented book entry
-        supplemented_book = {
-            "id": book_id,
+        # LANGUAGE HANDLING
+        language_code = volume_info.get("language")
+        
+        if language_code:
+            data_sources["real"].add("language_code")
+        else:
+            language_code = 'en'  # Default to English
+            data_sources["synthetic"].add("language_code")
+        
+        # PAGE COUNT HANDLING
+        num_pages = volume_info.get("pageCount")
+        
+        if num_pages:
+            data_sources["real"].add("num_pages")
+        else:
+            num_pages = random.randint(100, 800)
+            data_sources["synthetic"].add("num_pages")
+        
+        # PUBLISHER HANDLING
+        publisher = volume_info.get("publisher")
+        
+        if publisher:
+            data_sources["real"].add("publisher")
+        else:
+            publisher = random.choice(["Penguin Random House", "HarperCollins", "Simon & Schuster", 
+                                       "Hachette Book Group", "Macmillan Publishers", "Scholastic",
+                                       "Wiley", "Oxford University Press", "Cambridge University Press"])
+            data_sources["synthetic"].add("publisher")
+        
+        # DESCRIPTION HANDLING
+        description = volume_info.get("description")
+        
+        if description:
+            # Truncate very long descriptions
+            if len(description) > 1000:
+                description = description[:997] + "..."
+            data_sources["real"].add("description")
+        else:
+            description = f"This is a fictional description for the book '{title}' by {author_string}."
+            data_sources["synthetic"].add("description")
+        
+        # Create the standardized book dictionary
+        standardized_book = {
             "book_id": book_id,
-            "best_book_id": book_id,
-            "work_id": book_id,
-            "books_count": 1,
+            "title": title,
+            "authors": author_string,
+            "average_rating": float(avg_rating),
             "isbn": isbn,
             "isbn13": isbn13,
-            "authors": author_string,
-            "original_publication_year": float(year),
-            "original_title": book["title"],
-            "title": book["title"],
-            "language_code": language,
-            "average_rating": avg_rating,
-            "ratings_count": ratings_count,
-            "work_ratings_count": ratings_count,
-            "work_text_reviews_count": int(ratings_count * 0.1),
+            "language_code": language_code,
+            "num_pages": int(num_pages) if num_pages else 0,
+            "ratings_count": int(ratings_count) if ratings_count else 0,
             "ratings_1": rating_counts[0],
             "ratings_2": rating_counts[1],
             "ratings_3": rating_counts[2],
             "ratings_4": rating_counts[3],
             "ratings_5": rating_counts[4],
+            "published_year": year,
+            "original_publication_year": year,  # Using the same year for simplicity
+            "original_title": title,
             "image_url": image_url,
-            "small_image_url": small_image_url,
+            "publisher": publisher,
+            "description": description,
             "genres": genre_string,
-            "description": description
         }
         
-        supplemented_books.append(supplemented_book)
+        standardized_books.append(standardized_book)
     
-    return supplemented_books
+    # Log which fields are real vs. synthetic
+    logger.info("=== DATA SOURCE SUMMARY ===")
+    logger.info(f"Real data from API: {', '.join(sorted(data_sources['real']))}")
+    logger.info(f"Synthetic data (generated): {', '.join(sorted(data_sources['synthetic']))}")
+    if data_sources['mixed']:
+        logger.info(f"Mixed (some books real, some synthetic): {', '.join(sorted(data_sources['mixed']))}")
+    
+    return standardized_books
+
 
 def generate_ratings(books_df: pd.DataFrame, num_users: int = 1000, sparsity_factor: float = 0.20) -> pd.DataFrame:
-    """Generate ratings data to match the structure of the original ratings.csv with realistic sparsity
+    """
+    Generate synthetic ratings data for books
     
     Args:
         books_df: DataFrame containing book data
-        num_users: Number of user IDs to generate
-        sparsity_factor: Fraction of books each user rates on average (0.20 = 20%)
-    
+        num_users: Number of synthetic users to generate
+        sparsity_factor: Controls how many books each user rates (lower = more ratings)
+        
     Returns:
-        DataFrame with book_id, user_id, and rating columns
+        DataFrame containing user ratings
     """
     logger.info(f"Generating ratings data for {num_users} users with sparsity factor {sparsity_factor}")
     
-    ratings_data = []
+    # Get the list of book IDs
     book_ids = books_df["book_id"].tolist()
-    total_books = len(book_ids)
     
-    # For each user, determine how many and which books they will rate
+    # Get the most popular books based on average rating and ratings count
+    # These will be used to ensure each user has some ratings for popular books
+    if "ratings_count" in books_df.columns and "average_rating" in books_df.columns:
+        popular_books = books_df.sort_values(by=["ratings_count", "average_rating"], ascending=False)
+        popular_book_ids = popular_books.head(50)["book_id"].tolist()
+    else:
+        # Fallback if ratings data isn't available
+        popular_book_ids = book_ids[:50]
+    
+    ratings = []
+    
     for user_id in range(1, num_users + 1):
-        # Users typically follow a power law distribution - some rate many books, most rate few
-        # Generate a random number that follows roughly a power law distribution
-        if random.random() < 0.05:  # 5% of users are "power users"
-            # Power users rate between 5% and 20% of books
-            user_rating_probability = random.uniform(0.05, 0.2)
-        else:  # 95% of users rate very few books
-            # Regular users rate between 0.1% and 5% of books
-            user_rating_probability = random.uniform(0.001, 0.05)
-            
-        # Calculate how many books this user will rate
-        num_to_rate = max(1, int(total_books * user_rating_probability))
-        num_to_rate = min(num_to_rate, total_books)  # Can't rate more books than exist
+        # Ensure each user rates at least 3 books, regardless of sparsity
+        min_ratings = 3
         
-        # Select random books for this user to rate
-        if num_to_rate > 0:
-            user_books = random.sample(book_ids, num_to_rate)
+        # Calculate total ratings for this user, ensuring at least min_ratings
+        n_ratings = max(min_ratings, int(len(book_ids) * (1 - sparsity_factor) * random.uniform(0.5, 1.5)))
+        
+        # Make sure each user rates some popular books
+        # This ensures better collaborative filtering quality
+        num_popular_to_rate = min(min_ratings, len(popular_book_ids))
+        popular_to_rate = random.sample(popular_book_ids, num_popular_to_rate)
+        
+        # Then select remaining random books to meet the total required ratings
+        remaining_books = [bid for bid in book_ids if bid not in popular_to_rate]
+        remaining_to_rate = random.sample(remaining_books, 
+                                         min(n_ratings - num_popular_to_rate, len(remaining_books)))
+        
+        # Combine popular and random books
+        books_to_rate = popular_to_rate + remaining_to_rate
+        
+        for book_id in books_to_rate:
+            # Get book information to influence the rating
+            book = books_df[books_df["book_id"] == book_id].iloc[0]
+            avg_rating = book.get("average_rating", 3.5)  # Default to 3.5 if not available
             
-            # For each book, generate a rating with a bias toward higher ratings
-            # (most users rate things they like)
-            for book_id in user_books:
-                # Biased random rating - more likely to be 4 or 5 than 1 or 2
-                rating_weights = [0.05, 0.1, 0.2, 0.35, 0.3]  # Probabilities of ratings 1-5
-                rating = random.choices([1, 2, 3, 4, 5], weights=rating_weights)[0]
+            # Generate a rating with some randomness but influenced by the average rating
+            # This creates more realistic rating distributions
+            rating_bias = (avg_rating - 3) * 0.5  # Bias towards the book's actual rating
+            
+            # Add randomness with more weight to 4 and 5 star ratings
+            weights = [0.05, 0.1, 0.2, 0.3, 0.35]  # Probability of 1-5 stars
+            
+            # Adjust weights based on the book's average rating
+            if avg_rating >= 4.0:
+                weights = [0.02, 0.08, 0.15, 0.35, 0.4]
+            elif avg_rating <= 3.0:
+                weights = [0.15, 0.25, 0.3, 0.2, 0.1]
                 
-                # Add to ratings data
-                ratings_data.append({
-                    "book_id": book_id,
-                    "user_id": user_id,
-                    "rating": rating
-                })
+            rating_value = random.choices([1, 2, 3, 4, 5], weights=weights)[0]
+            
+            ratings.append({
+                "user_id": user_id,
+                "book_id": book_id,
+                "rating": rating_value
+            })
     
-    # Create DataFrame
-    ratings_df = pd.DataFrame(ratings_data)
+    # Convert to DataFrame
+    ratings_df = pd.DataFrame(ratings)
+    
+    # Verify that each user has at least min_ratings
+    user_rating_counts = ratings_df.groupby('user_id').size()
+    min_user_ratings = user_rating_counts.min()
     logger.info(f"Generated {len(ratings_df)} ratings from {num_users} users")
+    logger.info(f"Minimum ratings per user: {min_user_ratings}")
     
     return ratings_df
 
-def fetch_and_process_data(api_key: str, limit: int = 50, append: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Fetch books from Hardcover API and process into the required format"""
-    # Output directory and path
-    output_dir = os.path.join('data', 'raw')
-    books_path = os.path.join(output_dir, 'books.csv')
-    ratings_path = os.path.join(output_dir, 'ratings.csv')
+
+def remove_duplicates(books_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicate books based on title and author
     
-    # Check if we should load existing data first (for append mode)
-    existing_books_df = pd.DataFrame()
-    existing_ratings_df = pd.DataFrame()
-    max_book_id = 0
-    max_user_id = 0
-    
-    if append and os.path.exists(books_path):
-        try:
-            existing_books_df = pd.read_csv(books_path)
-            logger.info(f"Loaded {len(existing_books_df)} existing books")
-            
-            if len(existing_books_df) > 0:
-                max_book_id = existing_books_df['book_id'].max()
-                logger.info(f"Max existing book_id: {max_book_id}")
-        except Exception as e:
-            logger.error(f"Error loading existing books data: {e}")
-    
-    if append and os.path.exists(ratings_path):
-        try:
-            existing_ratings_df = pd.read_csv(ratings_path)
-            logger.info(f"Loaded {len(existing_ratings_df)} existing ratings")
-            
-            if len(existing_ratings_df) > 0:
-                max_user_id = existing_ratings_df['user_id'].max()
-                logger.info(f"Max existing user_id: {max_user_id}")
-        except Exception as e:
-            logger.error(f"Error loading existing ratings data: {e}")
-    
-    # Fetch books from API
-    raw_books = get_books(api_key, limit)
-    
-    if not raw_books:
-        logger.error("Failed to retrieve any books from the API")
-        return pd.DataFrame(), pd.DataFrame()
-    
-    # Supplement with additional fields to match original format
-    supplemented_books = supplement_book_data(raw_books)
-    
-    # Create books DataFrame
-    books_df = pd.DataFrame(supplemented_books)
-    
-    # Adjust IDs if appending to existing data
-    if append and len(existing_books_df) > 0:
-        logger.info(f"Adjusting IDs for {len(books_df)} new books to avoid conflicts")
-        books_df['book_id'] = books_df['book_id'].apply(lambda x: x + max_book_id)
-        books_df['id'] = books_df['id'].apply(lambda x: x + max_book_id)
-        books_df['best_book_id'] = books_df['best_book_id'].apply(lambda x: x + max_book_id)
-        books_df['work_id'] = books_df['work_id'].apply(lambda x: x + max_book_id)
-    
-    # Generate ratings for the new books
-    num_users = 2000  # Generate 2000 users
-    ratings_df = generate_ratings(books_df, num_users=num_users, sparsity_factor=0.03)
-    
-    # Adjust user IDs if appending to existing data
-    if append and max_user_id > 0:
-        logger.info(f"Adjusting user IDs for {len(ratings_df)} new ratings to avoid conflicts")
-        ratings_df['user_id'] = ratings_df['user_id'].apply(lambda x: x + max_user_id)
-    
-    # Combine with existing data if appending
-    if append:
-        if not existing_books_df.empty:
-            logger.info(f"Concatenating {len(books_df)} new books with {len(existing_books_df)} existing books")
-            books_df = pd.concat([existing_books_df, books_df], ignore_index=True)
+    Args:
+        books_df: DataFrame containing book data
         
-        if not existing_ratings_df.empty:
-            logger.info(f"Concatenating {len(ratings_df)} new ratings with {len(existing_ratings_df)} existing ratings")
-            ratings_df = pd.concat([existing_ratings_df, ratings_df], ignore_index=True)
-    
-    # Remove duplicates
+    Returns:
+        DataFrame with duplicates removed
+    """
     logger.info(f"Removing duplicates from {len(books_df)} books")
-    original_book_count = len(books_df)
-    books_df = books_df.drop_duplicates(subset=['title', 'authors'], keep='first')
-    logger.info(f"Removed {original_book_count - len(books_df)} duplicate books")
     
-    # Make sure all books are in English
-    books_df['language_code'] = 'eng'
+    # Create a new column with lowercase title+author for deduplication
+    books_df["dedup_key"] = books_df["title"].str.lower() + "|" + books_df["authors"].str.lower()
     
-    # Save books to CSV
-    os.makedirs(output_dir, exist_ok=True)
-    books_df.to_csv(books_path, index=False)
-    logger.info(f"Saved {len(books_df)} books to {books_path}")
+    # Keep the first occurrence of each title+author combination
+    books_df_unique = books_df.drop_duplicates(subset=["dedup_key"])
     
-    # Remove any ratings for books that no longer exist (after deduplication)
-    valid_book_ids = set(books_df['book_id'].unique())
-    original_ratings_count = len(ratings_df)
-    ratings_df = ratings_df[ratings_df['book_id'].isin(valid_book_ids)]
-    logger.info(f"Removed {original_ratings_count - len(ratings_df)} ratings for non-existent books")
+    # Remove the temporary column
+    books_df_unique = books_df_unique.drop(columns=["dedup_key"])
     
-    # Remove duplicate ratings (same user rating the same book multiple times)
-    ratings_df = ratings_df.drop_duplicates(subset=['user_id', 'book_id'], keep='last')
-    logger.info(f"After removing duplicate ratings: {len(ratings_df)} ratings")
+    logger.info(f"Removed {len(books_df) - len(books_df_unique)} duplicate books")
     
-    # Save ratings to CSV
-    ratings_df.to_csv(ratings_path, index=False)
-    logger.info(f"Saved {len(ratings_df)} ratings to {ratings_path}")
-    
-    return books_df, ratings_df
+    return books_df_unique
+
 
 @click.command()
-@click.argument('output_filepath', type=click.Path(), default='data/raw')
-@click.option('--limit', default=500, help='Number of books to fetch')
-@click.option('--append/--no-append', default=True, help='Append to existing data')
-@click.option('--api-key', help='Hardcover API key (Bearer token)')
-def main(output_filepath, limit, append, api_key=None):
-    """Fetch book data from Hardcover API and save to CSV"""
-    # Get API key
-    if not api_key:
-        api_key = os.environ.get("HARDCOVER_API_KEY")
-        if not api_key:
-            # Use the hardcoded API key if no other key is provided
-            logger.info("Using default hardcoded API key")
-            api_key = DEFAULT_API_KEY
+@click.option("--limit", default=500, help="Number of books to retrieve")
+@click.option("--num-users", default=2000, help="Number of users to generate")
+@click.option("--sparsity", default=0.03, help="Sparsity factor for ratings (lower = more ratings)")
+@click.option("--output-filepath", default="data/raw", help="Output directory for the dataset")
+def main(limit: int, num_users: int, sparsity: float, output_filepath: str):
+    """
+    Main function to retrieve data from Google Books API and save to CSV files
+    """
+    # Convert relative path to absolute path using project root
+    abs_output_filepath = os.path.join(project_root, output_filepath)
+    logger.info(f"Starting data retrieval, output_filepath: {abs_output_filepath}")
     
-    logger.info(f"Starting data retrieval, output_filepath: {output_filepath}")
+    # Create output directory if it doesn't exist
+    Path(abs_output_filepath).mkdir(parents=True, exist_ok=True)
     
-    try:
-        books_df, ratings_df = fetch_and_process_data(
-            api_key=api_key,
-            limit=limit,
-            append=append
-        )
-        
-        if len(books_df) == 0:
-            logger.error("Failed to retrieve and process book data")
-            return 1
-            
-        logger.info("Data retrieval and processing complete")
-    except Exception as e:
-        logger.error(f"Error in data retrieval: {e}")
-        return 1
+    # Retrieve books from Google Books API
+    books = get_books(limit=limit)
     
-    return 0
+    # Extract and standardize book data
+    standardized_books = extract_book_data(books)
+    
+    # Convert to DataFrame
+    books_df = pd.DataFrame(standardized_books)
+    
+    # Remove duplicate books
+    books_df = remove_duplicates(books_df)
+    
+    # Generate ratings
+    ratings_df = generate_ratings(books_df, num_users=num_users, sparsity_factor=sparsity)
+    
+    # Check for and remove ratings for non-existent books (due to duplicates being removed)
+    valid_book_ids = set(books_df["book_id"].tolist())
+    original_ratings_count = len(ratings_df)
+    ratings_df = ratings_df[ratings_df["book_id"].isin(valid_book_ids)]
+    
+    if len(ratings_df) < original_ratings_count:
+        logger.info(f"Removed {original_ratings_count - len(ratings_df)} ratings for non-existent books")
+    
+    # Remove duplicate ratings (same user rating the same book multiple times)
+    original_ratings_count = len(ratings_df)
+    ratings_df = ratings_df.drop_duplicates(subset=["user_id", "book_id"])
+    
+    if len(ratings_df) < original_ratings_count:
+        logger.info(f"After removing duplicate ratings: {len(ratings_df)} ratings")
+    
+    # Save the data to CSV files
+    books_filepath = os.path.join(abs_output_filepath, "books.csv")
+    ratings_filepath = os.path.join(abs_output_filepath, "ratings.csv")
+    
+    books_df.to_csv(books_filepath, index=False)
+    logger.info(f"Saved {len(books_df)} books to {books_filepath}")
+    
+    ratings_df.to_csv(ratings_filepath, index=False)
+    logger.info(f"Saved {len(ratings_df)} ratings to {ratings_filepath}")
+    
+    # Create a marker file to indicate completion
+    with open(os.path.join(abs_output_filepath, "retrieval_complete"), 'w') as f:
+        f.write(f"Data retrieval completed at {datetime.now().isoformat()}")
+    
+    logger.info("Data retrieval and processing complete")
 
-if __name__ == '__main__':
-    # Find .env file, if it exists
-    load_dotenv(find_dotenv())
-    
-    # Call the main function with default values without requiring args
-    # Default: 500 books, append=False, output='data/raw'
-    main.callback(output_filepath='data/raw', limit=500, append=False, api_key=None)
+
+if __name__ == "__main__":
+    main()
