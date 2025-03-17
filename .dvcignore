@@ -1,3 +1,21 @@
 # Add patterns of files dvc should ignore, which could improve
 # the performance. Learn more at
 # https://dvc.org/doc/user-guide/dvcignore
+# Ignore source code and web assets (manage these with Git)
+src/
+flask/
+notebooks/
+streamlit/
+
+# Ignore typical Python cache files and folders
+*.pyc
+__pycache__/
+
+# Ignore Git files (these are managed by Git)
+.git/
+.gitignore
+.dvcignore
+
+# Optionally, ignore notebooks if they are not part of the artifacts you want to version with DVC
+*.ipynb
+

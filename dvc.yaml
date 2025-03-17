@@ -33,7 +33,7 @@ stages:
     outs:
       - models/collaborative.pkl
       - models/collaborative_config.json
-      
+
   evaluate_model:
     cmd: python -m src.models.evaluate_model --model-path models/collaborative.pkl
     deps:
