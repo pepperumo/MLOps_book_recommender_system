@@ -76,8 +76,9 @@ services:
       - GIT_USER_NAME=pepperumo
       - GIT_USER_EMAIL=pepperumo@gmail.com
       - GIT_BRANCH=dev
-      - GIT_REMOTE_URL=https://github.com/pepperumo/MLOps_book_recommender_system.git
+      - GIT_REMOTE_URL=git@github.com:pepperumo/MLOps_book_recommender_system.git     
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SKIP_GIT_PUSH=true
     volumes:
       - ./data:/app/data
       - ./models:/app/models

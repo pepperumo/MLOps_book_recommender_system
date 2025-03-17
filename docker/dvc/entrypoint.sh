@@ -74,20 +74,29 @@ git fetch origin || echo "⚠️ Git fetch failed; might be a new repository"
 git checkout -B "$TARGET_BRANCH" origin/"$TARGET_BRANCH" || git checkout -B "$TARGET_BRANCH"
 git pull origin "$TARGET_BRANCH" || echo "⚠️ Git pull failed; might be a new branch"
 
+
+git remote set-url origin "https://${GITHUB_TOKEN}@github.com/pepperumo/MLOps_book_recommender_system.git"
+
 # (Optional) Add any non-pipeline files from /app/models that are not already in dvc.yaml.
 # (Usually, you don’t want to add files already tracked by your DVC pipeline.)
+# Only add files NOT already managed by the pipeline
 for file in $(find /app/models -type f -not -path "*/\.*" | grep -v ".dvc"); do
-    if ! grep -q "$file" dvc.yaml; then
+    if ! grep -q "$file" dvc.yaml && ! grep -q "$(basename $file)" dvc.yaml; then
         echo "🔄 Adding non-pipeline file to DVC: $file"
         dvc add "$file" || echo "⚠️ Could not add $file, it might be managed by a pipeline"
+    else
+        echo "ℹ️ Skipping $file as it's managed by the pipeline"
     fi
 done
 
-# Commit and push changes to Git
-echo "📤 Committing updated DVC outputs to Git and pushing to branch: $TARGET_BRANCH..."
-git add .dvc/config .dvcignore dvc.yaml dvc.lock models/*.dvc
-git commit -m "📅 Update collaborative model artifacts $(date +'%Y-%m-%d')" || echo "⚠️ Nothing to commit"
-git push origin "$TARGET_BRANCH" || echo "⚠️ Push failed; check Git configuration"
+if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
+  echo "📤 Committing updated DVC outputs to Git and pushing to branch: $TARGET_BRANCH..."
+  git add .
+  git commit -m "📅 Update collaborative model artifacts $(date +%Y-%m-%d)" || echo "⚠️ Nothing to commit"
+  git push origin "$TARGET_BRANCH" || echo "⚠️ Push failed; check Git configuration"
+else
+  echo "⏩ Skipping Git push as requested"
+fi
 
 # Push updated artifacts to DVC remote storage
 if dvc remote list | grep -q .; then
