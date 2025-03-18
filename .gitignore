@@ -111,5 +111,9 @@ logs/
 # Flask
 node_modules/
 
+# Node.js
+npm-debug.log
 
+# Mermaid
+Mermaid/
 .windsurfrules
