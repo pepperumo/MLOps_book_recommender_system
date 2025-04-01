@@ -16,3 +16,14 @@ __pycache__/
 # Optionally, ignore notebooks if they are not part of the artifacts you want to version with DVC
 *.ipynb
 
+# Ignore virtual environment
+venv/
+
+# Ignore Docker
+*.docker
+
+# Ignore logs
+logs/
+
+# Ignore MCP
+MCP/
