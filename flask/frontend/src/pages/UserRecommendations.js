@@ -12,16 +12,13 @@ import {
   Alert,
   AlertTitle,
   Paper,
-  useTheme,
-  Switch,
-  FormControlLabel
+  useTheme
 } from '@mui/material';
 import BookIcon from '@mui/icons-material/Book';
 import SearchIcon from '@mui/icons-material/Search';
 import BookCard from '../components/BookCard';
 import LogoLoading from '../components/LogoLoading';
 import { useNavigate } from 'react-router-dom';
-import { checkMcpAvailability, getBookRecommendationsViaMcp } from '../services/mcpService';
 
 const UserRecommendations = () => {
   // State variables
@@ -32,29 +29,13 @@ const UserRecommendations = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [fetchingUsers, setFetchingUsers] = useState(true);
-  const [mcpAvailable, setMcpAvailable] = useState(false);
-  const [useMcp, setUseMcp] = useState(false);
   const navigate = useNavigate();
   const theme = useTheme();
 
   // Fetch user IDs on component mount
   useEffect(() => {
     fetchUserIds();
-    checkMcpStatus();
   }, []);
-
-  // Check if MCP is available
-  const checkMcpStatus = async () => {
-    try {
-      const available = await checkMcpAvailability();
-      setMcpAvailable(available);
-      setUseMcp(available); // Default to using MCP if available
-    } catch (error) {
-      console.error('Error checking MCP status:', error);
-      setMcpAvailable(false);
-      setUseMcp(false);
-    }
-  };
 
   // Fetch all available user IDs
   const fetchUserIds = async () => {
@@ -108,27 +89,21 @@ const UserRecommendations = () => {
       // Fetch user details first
       await fetchUserDetails(userId);
       
-      if (useMcp && mcpAvailable) {
-        // Use MCP for recommendations
-        const data = await getBookRecommendationsViaMcp(userId, recommendationCount);
-        setRecommendations(data || []);
-      } else {
-        // Use standard API endpoint
-        const response = await fetch(
-          `http://localhost:5000/api/recommend/user/${userId}?count=${recommendationCount}&include_images=true`
-        );
-        
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error(`No recommendations found for user ${userId}`);
-          } else {
-            throw new Error(`Error fetching recommendations: ${response.statusText}`);
-          }
+      // Use Flask API endpoint instead of FastAPI for recommendations
+      const response = await fetch(
+        `http://localhost:5000/api/recommend/user/${userId}?count=${recommendationCount}&include_images=true`
+      );
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`No recommendations found for user ${userId}`);
+        } else {
+          throw new Error(`Error fetching recommendations: ${response.statusText}`);
         }
-        
-        const data = await response.json();
-        setRecommendations(data.recommendations || []);
       }
+      
+      const data = await response.json();
+      setRecommendations(data.recommendations || []);
     } catch (err) {
       console.error('Error fetching recommendations:', err);
       setError(err.message);
@@ -149,11 +124,6 @@ const UserRecommendations = () => {
       setRecommendationCount(value);
     }
   };
-  
-  // Handle MCP toggle
-  const handleMcpToggle = (event) => {
-    setUseMcp(event.target.checked);
-  };
 
   // Handle "Get Similar" button click on a book card
   const handleGetSimilar = (book) => {
@@ -164,10 +134,6 @@ const UserRecommendations = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, mt: 8 }}>
-      <Typography variant="h4" component="h1" gutterBottom align="center" sx={{ mb: 4 }}>
-        Book Recommendation Engine
-      </Typography>
-
       {/* User Selection and Recommendation Count */}
       <Paper 
         elevation={3} 
@@ -182,15 +148,16 @@ const UserRecommendations = () => {
         }}
       >
         <Grid container spacing={3} alignItems="center">
-          <Grid item xs={12} md={5}>
-            <FormControl fullWidth disabled={fetchingUsers}>
-              <InputLabel id="user-select-label">Select User ID</InputLabel>
+          <Grid item xs={12} md={4}>
+            <FormControl fullWidth variant="outlined">
+              <InputLabel id="user-select-label">Select a User</InputLabel>
               <Select
                 labelId="user-select-label"
                 id="user-select"
                 value={userId}
-                label="Select User ID"
+                label="Select a User"
                 onChange={handleUserChange}
+                disabled={fetchingUsers}
               >
                 {userIds.map((id) => (
                   <MenuItem key={id} value={id}>
@@ -198,20 +165,23 @@ const UserRecommendations = () => {
                   </MenuItem>
                 ))}
               </Select>
+              {fetchingUsers && (
+                <LogoLoading message="Loading user IDs..." />
+              )}
             </FormControl>
           </Grid>
           
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth>
-              <InputLabel id="count-select-label">Number of Recommendations</InputLabel>
+          <Grid item xs={12} md={4}>
+            <FormControl fullWidth variant="outlined">
+              <InputLabel id="recommendation-count-label">Number of Recommendations</InputLabel>
               <Select
-                labelId="count-select-label"
-                id="count-select"
+                labelId="recommendation-count-label"
+                id="recommendation-count"
                 value={recommendationCount}
-                label="Number of Recommendations"
                 onChange={handleRecommendationCountChange}
+                label="Number of Recommendations"
               >
-                {[3, 5, 8, 10, 12].map((count) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((count) => (
                   <MenuItem key={count} value={count}>
                     {count}
                   </MenuItem>
@@ -220,22 +190,7 @@ const UserRecommendations = () => {
             </FormControl>
           </Grid>
           
-          {mcpAvailable && (
-            <Grid item xs={12} md={2}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useMcp}
-                    onChange={handleMcpToggle}
-                    color="primary"
-                  />
-                }
-                label="Use MCP"
-              />
-            </Grid>
-          )}
-          
-          <Grid item xs={12} md={2} sx={{ display: 'flex', alignItems: 'center' }}>
+          <Grid item xs={12} md={4} sx={{ display: 'flex', alignItems: 'center' }}>
             <Button
               variant="contained"
               color="primary"

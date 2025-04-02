@@ -29,8 +29,8 @@ function App() {
         main: '#dc004e',
       },
       background: {
-        default: darkMode ? '#121212' : '#f5f5f5',
-        paper: darkMode ? '#1e1e1e' : '#ffffff',
+        default: 'transparent', // Make default background transparent
+        paper: darkMode ? 'rgba(30, 30, 30, 0.8)' : 'rgba(255, 255, 255, 0.9)', // Semi-transparent paper
       },
     },
     typography: {
@@ -64,6 +64,20 @@ function App() {
           },
         },
       },
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            margin: 0,
+            padding: 0,
+            backgroundImage: 'url(/background.png)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundAttachment: 'fixed',
+            backgroundRepeat: 'no-repeat',
+            minHeight: '100vh',
+          },
+        },
+      },
     },
   });
 
@@ -77,7 +91,7 @@ function App() {
     <ThemeModeProvider value={{ darkMode, toggleDarkMode }}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Box sx={{ display: 'flex', height: '100vh' }}>
+        <Box sx={{ display: 'flex', minHeight: '100vh' }}>
           <Header />
           <Box
             component="main"
@@ -86,7 +100,8 @@ function App() {
               p: 3,
               width: '100%',
               mt: '64px',
-              overflow: 'auto'
+              overflow: 'auto',
+              backgroundColor: 'transparent' // Ensure this is transparent
             }}
           >
             <Routes>

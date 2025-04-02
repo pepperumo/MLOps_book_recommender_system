@@ -1,41 +1,66 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-// Create context
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
-// Custom hook to use the auth context
-export const useAuth = () => useContext(AuthContext);
-
-// Provider component - simplified stub version with no actual authentication
 export const AuthProvider = ({ children }) => {
-  // No user authentication as per requirements
-  const user = null;
-  const isAuthenticated = false;
-  
-  // Empty stub functions
-  const login = () => {
-    console.log('Login functionality removed as per requirements');
-  };
-  
-  const logout = () => {
-    console.log('Logout functionality removed as per requirements');
-  };
-  
-  const register = () => {
-    console.log('Register functionality removed as per requirements');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Check if user is already logged in on mount
+  useEffect(() => {
+    const checkAuth = () => {
+      const token = localStorage.getItem('authToken');
+      console.log('Initial auth check:', token ? 'Token found' : 'No token found');
+      
+      if (token) {
+        setIsAuthenticated(true);
+        setUser({ username: localStorage.getItem('username') || 'User' });
+      }
+      setLoading(false);
+    };
+    
+    checkAuth();
+  }, []);
+
+  // Login function
+  const login = async (username, password) => {
+    console.log('Login attempt with:', username);
+    
+    // For demo purposes - hardcoded credentials
+    if (username === 'demo' && password === 'password') {
+      console.log('Login successful');
+      localStorage.setItem('authToken', 'demo-token');
+      localStorage.setItem('username', username);
+      setIsAuthenticated(true);
+      setUser({ username });
+      return true;
+    }
+    
+    console.log('Login failed - invalid credentials');
+    throw new Error('Invalid credentials');
   };
 
-  return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated, 
-      login, 
-      logout, 
-      register 
-    }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  // Logout function
+  const logout = () => {
+    console.log('Logging out');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('username');
+    setIsAuthenticated(false);
+    setUser(null);
+  };
+
+  const value = {
+    isAuthenticated,
+    user,
+    loading,
+    login,
+    logout
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export default AuthContext;
+export const useAuth = () => {
+  return useContext(AuthContext);
+};

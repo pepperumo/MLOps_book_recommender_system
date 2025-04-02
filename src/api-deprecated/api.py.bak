@@ -3,6 +3,22 @@
 
 """Book Recommendation API using FastAPI with Collaborative Filtering."""
 
+###########################################################################
+# DEPRECATED: This FastAPI implementation has been deprecated in favor of 
+# the Flask implementation in flask/backend/routes/api_routes.py
+#
+# Reason for deprecation: 
+# - Consolidated API architecture to avoid duplication and confusion
+# - All functionality has been migrated to the Flask implementation
+# - The Flask implementation provides enhanced error handling and 
+#   better integration with the frontend application
+#
+# Date deprecated: April 2, 2025
+#
+# This file is kept for reference purposes only and should not be used
+# for development or deployment.
+###########################################################################
+
 import os
 import sys
 from datetime import datetime

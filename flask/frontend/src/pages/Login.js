@@ -8,7 +8,6 @@ import {
   Paper,
   Avatar,
   Grid,
-  Link,
   Checkbox,
   FormControlLabel,
   Alert,
@@ -147,25 +146,15 @@ const Login = () => {
             >
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
-            <Grid container>
+            <Grid container sx={{ mt: 2 }}>
               <Grid item xs>
-                <Link href="#" variant="body2">
-                  Forgot password?
-                </Link>
-              </Grid>
-              <Grid item>
-                <Link href="#" variant="body2">
-                  {"Don't have an account? Sign Up"}
-                </Link>
+                <Typography variant="body2" color="error">
+                  {'For demo, try using username: demo, password: password'}
+                </Typography>
               </Grid>
             </Grid>
           </Box>
         </Paper>
-        <Box sx={{ mt: 2, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">
-            {'For demo, try using username: demo, password: password'}
-          </Typography>
-        </Box>
       </Grid>
     </Grid>
   );
