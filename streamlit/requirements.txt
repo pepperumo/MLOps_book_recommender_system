@@ -1,5 +1,9 @@
-streamlit>=1.28.0
-pandas>=1.5.0
-requests>=2.30.0
-matplotlib>=3.5.0
-seaborn>=0.12.0
+streamlit>=1.30.0
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.2.0
+scipy>=1.10.0
+matplotlib>=3.6.0
+altair>=4.0.0
+watchdog>=2.0.0
+pillow>=9.0.0

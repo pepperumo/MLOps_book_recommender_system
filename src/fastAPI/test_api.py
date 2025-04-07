@@ -34,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger('test_api')
 
 # Configuration
-DEFAULT_API_URL = "http://localhost:9999"
+DEFAULT_API_URL = "http://localhost:9998"
 DEFAULT_TIMEOUT = 10  # seconds
 
 def test_root_endpoint(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOUT) -> bool:
@@ -88,7 +88,7 @@ def test_user_recommendations(user_id: int = 125,
     """Test the user recommendations endpoint."""
     logger.info(f"Testing user recommendations for user {user_id}...")
     try:
-        url = f"{base_url}/recommend/user/{user_id}?num_recommendations={num_recommendations}"
+        url = f"{base_url}/api/recommend/user/{user_id}?num_recommendations={num_recommendations}"
         start_time = time.time()
         response = requests.get(url, timeout=timeout)
         response_time = time.time() - start_time
@@ -125,7 +125,7 @@ def test_similar_books(book_id: int = 352,
     """Test the similar books endpoint."""
     logger.info(f"Testing similar books for book {book_id}...")
     try:
-        url = f"{base_url}/similar-books/{book_id}?num_recommendations={num_recommendations}"
+        url = f"{base_url}/api/similar-books/{book_id}?num_recommendations={num_recommendations}"
         start_time = time.time()
         response = requests.get(url, timeout=timeout)
         response_time = time.time() - start_time
@@ -155,57 +155,92 @@ def test_similar_books(book_id: int = 352,
         logger.error(f"Similar books test failed for book {book_id}: {e}")
         return False
 
+def test_popular_books(limit: int = 6, base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOUT) -> bool:
+    """Test the popular books endpoint."""
+    logger.info(f"Testing popular books with limit {limit}...")
+    try:
+        url = f"{base_url}/api/popular-books?limit={limit}"
+        start_time = time.time()
+        response = requests.get(url, timeout=timeout)
+        response_time = time.time() - start_time
+        response.raise_for_status()
+        
+        data = response.json()
+        logger.info(f"Popular books response received in {response_time:.2f}s")
+        
+        # Validate response structure
+        assert "books" in data
+        assert len(data["books"]) <= limit
+        
+        # Validate book structure
+        for book in data["books"]:
+            assert "book_id" in book
+            assert "title" in book
+            assert "authors" in book
+            assert "average_rating" in book
+            assert "ratings_count" in book
+        
+        logger.info(f"Found {len(data['books'])} popular books")
+        for i, book in enumerate(data['books']):
+            logger.info(f"  {i+1}. {book['title']} by {book['authors']} (ID: {book['book_id']})")
+        
+        logger.info("Popular books test passed")
+        return True
+    except Exception as e:
+        logger.error(f"Popular books test failed: {e}")
+        return False
+
 def test_error_cases(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOUT) -> bool:
     """Test API error handling."""
     test_cases = [
         {
             "name": "Non-existent user",
-            "url": f"{base_url}/recommend/user/99999",
+            "url": f"{base_url}/api/recommend/user/99999",
             "expected_status": 404
         },
         {
             "name": "Non-existent book",
-            "url": f"{base_url}/similar-books/99999",
+            "url": f"{base_url}/api/similar-books/99999",
             "expected_status": 404
         },
         {
             "name": "Invalid recommendation count",
-            "url": f"{base_url}/recommend/user/125?num_recommendations=100",
+            "url": f"{base_url}/api/recommend/user/125?num_recommendations=100",
             "expected_status": 422
         },
         {
             "name": "Negative user ID",
-            "url": f"{base_url}/recommend/user/-1",
+            "url": f"{base_url}/api/recommend/user/-1",
             "expected_status": 404
         },
         {
             "name": "Zero user ID",
-            "url": f"{base_url}/recommend/user/0",
+            "url": f"{base_url}/api/recommend/user/0",
             "expected_status": 404
         },
         {
             "name": "Non-integer user ID",
-            "url": f"{base_url}/recommend/user/abc",
+            "url": f"{base_url}/api/recommend/user/abc",
             "expected_status": 422
         },
         {
             "name": "Negative book ID",
-            "url": f"{base_url}/similar-books/-5",
+            "url": f"{base_url}/api/similar-books/-5",
             "expected_status": 404
         },
         {
             "name": "Zero book ID",
-            "url": f"{base_url}/similar-books/0",
+            "url": f"{base_url}/api/similar-books/0",
             "expected_status": 404
         },
         {
             "name": "Negative recommendation count",
-            "url": f"{base_url}/recommend/user/125?num_recommendations=-1",
+            "url": f"{base_url}/api/recommend/user/125?num_recommendations=-1",
             "expected_status": 422
         },
         {
             "name": "Zero recommendation count",
-            "url": f"{base_url}/recommend/user/125?num_recommendations=0",
+            "url": f"{base_url}/api/recommend/user/125?num_recommendations=0",
             "expected_status": 422
         }
     ]
@@ -241,33 +276,43 @@ def test_boundary_values(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT
     test_cases = [
         {
             "name": "Minimum recommendations (1)",
-            "url": f"{base_url}/recommend/user/125?num_recommendations=1",
+            "url": f"{base_url}/api/recommend/user/125?num_recommendations=1",
             "expected_count": 1
         },
         {
             "name": "Maximum recommendations (20)",
-            "url": f"{base_url}/recommend/user/125?num_recommendations=20",
+            "url": f"{base_url}/api/recommend/user/125?num_recommendations=20",
             "expected_max_count": 20
         },
         {
             "name": "Default recommendations (no parameter)",
-            "url": f"{base_url}/recommend/user/125",
+            "url": f"{base_url}/api/recommend/user/125",
             "expected_count": 5  # Default is typically 5
         },
         {
             "name": "Alternative parameter name (n)",
-            "url": f"{base_url}/recommend/user/125?n=3",
+            "url": f"{base_url}/api/recommend/user/125?n=3",
             "expected_count": 3
         },
         {
             "name": "Minimum similar books (1)",
-            "url": f"{base_url}/similar-books/352?num_recommendations=1",
+            "url": f"{base_url}/api/similar-books/352?num_recommendations=1",
             "expected_count": 1
         },
         {
             "name": "Maximum similar books (20)",
-            "url": f"{base_url}/similar-books/352?num_recommendations=20",
+            "url": f"{base_url}/api/similar-books/352?num_recommendations=20",
             "expected_max_count": 20
+        },
+        {
+            "name": "Minimum popular books (1)",
+            "url": f"{base_url}/api/popular-books?limit=1",
+            "expected_count": 1
+        },
+        {
+            "name": "Maximum popular books (12)",
+            "url": f"{base_url}/api/popular-books?limit=12",
+            "expected_count": 12
         }
     ]
     
@@ -280,24 +325,26 @@ def test_boundary_values(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT
             response.raise_for_status()
             data = response.json()
             
-            # Check if recommendations exist
-            if "recommendations" not in data:
-                logger.warning(f"FAIL: {test_case['name']}: No recommendations field in response")
+            # Handle different response structures
+            if "recommendations" in data:
+                actual_count = len(data["recommendations"])
+            elif "books" in data:
+                actual_count = len(data["books"]) 
+            else:
+                logger.warning(f"FAIL: {test_case['name']}: No recommendations or books field in response")
                 all_passed = False
                 continue
                 
-            actual_count = len(data["recommendations"])
-            
             # Check if count matches expected count exactly
             if "expected_count" in test_case and actual_count != test_case["expected_count"]:
-                logger.warning(f"FAIL: {test_case['name']}: Expected exactly {test_case['expected_count']} recommendations, got {actual_count}")
+                logger.warning(f"FAIL: {test_case['name']}: Expected exactly {test_case['expected_count']} items, got {actual_count}")
                 all_passed = False
             # Check if count is at most expected max count
             elif "expected_max_count" in test_case and actual_count > test_case["expected_max_count"]:
-                logger.warning(f"FAIL: {test_case['name']}: Expected at most {test_case['expected_max_count']} recommendations, got {actual_count}")
+                logger.warning(f"FAIL: {test_case['name']}: Expected at most {test_case['expected_max_count']} items, got {actual_count}")
                 all_passed = False
             else:
-                logger.info(f"PASS: {test_case['name']}: Got {actual_count} recommendations as expected")
+                logger.info(f"PASS: {test_case['name']}: Got {actual_count} items as expected")
                 
         except Exception as e:
             logger.error(f"FAIL: {test_case['name']} test failed with error: {e}")
@@ -310,12 +357,53 @@ def test_boundary_values(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT
     
     return all_passed
 
+def test_book_id_mapping(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOUT) -> bool:
+    """Test book ID mapping functionality with known mapped IDs."""
+    logger.info("Testing book ID mapping with known mapped book IDs...")
+    
+    # Get these IDs from the book_id_mapping.csv file to ensure we're testing valid mappings
+    mapped_books = [
+        {"original_id": 364, "mapped_id": 332}, 
+        {"original_id": 389, "mapped_id": 350},
+        {"original_id": 115, "mapped_id": 109}
+    ]
+    
+    all_passed = True
+    
+    for book in mapped_books:
+        original_id = book["original_id"]
+        try:
+            url = f"{base_url}/api/similar-books/{original_id}?num_recommendations=3"
+            response = requests.get(url, timeout=timeout)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if "recommendations" in data and len(data["recommendations"]) > 0:
+                    logger.info(f"PASS: Mapped book {original_id}: Got recommendations successfully")
+                else:
+                    logger.warning(f"PARTIAL: Mapped book {original_id}: Response OK but no recommendations")
+            else:
+                logger.warning(f"FAIL: Mapped book {original_id}: Got status code {response.status_code}")
+                all_passed = False
+                
+        except Exception as e:
+            logger.error(f"FAIL: Mapped book {original_id} test failed with error: {e}")
+            all_passed = False
+    
+    if all_passed:
+        logger.info("All book ID mapping tests passed")
+    else:
+        logger.warning("Some book ID mapping tests failed")
+    
+    return all_passed
+
 def test_stress(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOUT, num_requests: int = 10) -> bool:
     """Test API performance under multiple sequential requests."""
     logger.info(f"Testing API performance with {num_requests} sequential requests...")
     endpoints = [
-        f"{base_url}/recommend/user/125?num_recommendations=5",
-        f"{base_url}/similar-books/352?num_recommendations=5",
+        f"{base_url}/api/recommend/user/125?num_recommendations=5",
+        f"{base_url}/api/similar-books/352?num_recommendations=5",
+        f"{base_url}/api/popular-books?limit=6",
         f"{base_url}/health"
     ]
     
@@ -371,7 +459,7 @@ def test_edge_users_and_books(base_url: str = DEFAULT_API_URL, timeout: int = DE
     # Test user recommendations
     for user_id in edge_users:
         try:
-            url = f"{base_url}/recommend/user/{user_id}?num_recommendations=5"
+            url = f"{base_url}/api/recommend/user/{user_id}?num_recommendations=5"
             response = requests.get(url, timeout=timeout)
             
             if response.status_code == 200:
@@ -392,7 +480,7 @@ def test_edge_users_and_books(base_url: str = DEFAULT_API_URL, timeout: int = DE
     # Test similar books
     for book_id in edge_books:
         try:
-            url = f"{base_url}/similar-books/{book_id}?num_recommendations=5"
+            url = f"{base_url}/api/similar-books/{book_id}?num_recommendations=5"
             response = requests.get(url, timeout=timeout)
             
             if response.status_code == 200:
@@ -424,6 +512,8 @@ def run_all_tests(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOU
         "health_endpoint": test_health_endpoint(base_url, timeout),
         "user_recommendations": test_user_recommendations(125, 5, base_url, timeout),
         "similar_books": test_similar_books(352, 5, base_url, timeout),
+        "popular_books": test_popular_books(6, base_url, timeout),
+        "book_id_mapping": test_book_id_mapping(base_url, timeout),
         "error_handling": test_error_cases(base_url, timeout),
         "boundary_values": test_boundary_values(base_url, timeout),
         "stress_test": test_stress(base_url, timeout, 5),
@@ -434,8 +524,8 @@ def run_all_tests(base_url: str = DEFAULT_API_URL, timeout: int = DEFAULT_TIMEOU
     for user_id in [125, 200, 300]:
         test_results[f"user_{user_id}_recommendations"] = test_user_recommendations(user_id, 5, base_url, timeout)
     
-    # Additional similar books tests
-    for book_id in [352, 200, 100]:
+    # Additional similar books tests - using valid IDs from the book_id_mapping.csv file
+    for book_id in [364, 389, 115]:  # These are original IDs from the mapping
         test_results[f"book_{book_id}_similar"] = test_similar_books(book_id, 5, base_url, timeout)
     
     return test_results
@@ -448,8 +538,8 @@ def main(args: Optional[List[str]] = None) -> int:
     parser.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT,
                         help=f'Request timeout in seconds (default: {DEFAULT_TIMEOUT})')
     parser.add_argument('--test', type=str, 
-                        choices=['all', 'root', 'health', 'user', 'similar', 'errors', 
-                                'boundary', 'stress', 'edge'],
+                        choices=['all', 'root', 'health', 'user', 'similar', 'popular', 'mapping',
+                                'errors', 'boundary', 'stress', 'edge'],
                         default='all', help='Specific test to run (default: all)')
     parser.add_argument('--user-id', type=int, default=125,
                         help='User ID to test recommendations for (default: 125)')
@@ -492,6 +582,10 @@ def main(args: Optional[List[str]] = None) -> int:
             return 0 if test_user_recommendations(args.user_id, 5, args.url, args.timeout) else 1
         elif args.test == 'similar':
             return 0 if test_similar_books(args.book_id, 5, args.url, args.timeout) else 1
+        elif args.test == 'popular':
+            return 0 if test_popular_books(6, args.url, args.timeout) else 1
+        elif args.test == 'mapping':
+            return 0 if test_book_id_mapping(args.url, args.timeout) else 1
         elif args.test == 'errors':
             return 0 if test_error_cases(args.url, args.timeout) else 1
         elif args.test == 'boundary':
