@@ -14,6 +14,10 @@ import logging
 import os
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Union, Any
+import time
+
+# Import shared metrics instead of defining them here
+from src.metrics import MODEL_LOAD_TIME
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -126,7 +130,7 @@ class BaseRecommender:
             return False
     
     @classmethod
-    def load(cls, filepath):
+    def load(cls, filepath, model_type="collaborative"):
         """
         Load a model from disk.
         
@@ -134,18 +138,28 @@ class BaseRecommender:
         ----------
         filepath : str
             Path to load the model from
+        model_type : str
+            Type of model being loaded (for metrics)
             
         Returns
         -------
         BaseRecommender
             Loaded model
         """
+        start_time = time.time()
         try:
             with open(filepath, 'rb') as f:
                 model = pickle.load(f)
-            logger.info(f"Model loaded from {filepath}")
+            
+            # Record successful model load time
+            loading_time = time.time() - start_time
+            MODEL_LOAD_TIME.labels(model_type=model_type).set(loading_time)
+            
+            logger.info(f"Model loaded from {filepath} in {loading_time:.2f} seconds")
             return model
         except Exception as e:
+            # Record failed model load time 
+            loading_time = time.time() - start_time
             logger.error(f"Error loading model: {str(e)}")
             return None
 

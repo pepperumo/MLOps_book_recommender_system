@@ -199,6 +199,39 @@ def save_evaluation_results(evaluation_results: Dict[str, float],
         return ""
 
 
+def export_metrics_to_prometheus(results, model_type="collaborative"):
+    """Export evaluation metrics to Prometheus via pushgateway."""
+    try:
+        from prometheus_client import Gauge, push_to_gateway, CollectorRegistry
+        registry = CollectorRegistry()
+        
+        precision_gauge = Gauge('book_recommender_precision', 
+                              'Precision at k', 
+                              ['k', 'model_type'], 
+                              registry=registry)
+        
+        recall_gauge = Gauge('book_recommender_recall', 
+                           'Recall at k', 
+                           ['k', 'model_type'], 
+                           registry=registry)
+        
+        # Set metrics values
+        for metric, value in results.items():
+            if metric.startswith("precision@"):
+                k = metric.split("@")[1]
+                precision_gauge.labels(k=str(k), model_type=model_type).set(value)
+            elif metric.startswith("recall@"):
+                k = metric.split("@")[1]
+                recall_gauge.labels(k=str(k), model_type=model_type).set(value)
+        
+        # Push to Prometheus Pushgateway
+        push_gateway = os.getenv('PROMETHEUS_PUSHGATEWAY', 'localhost:9091')
+        push_to_gateway(push_gateway, job=f'book_recommender_evaluation', registry=registry)
+        print(f"Successfully exported metrics to Prometheus pushgateway")
+    except Exception as e:
+        print(f"Warning: Could not push metrics to Prometheus: {str(e)}")
+
+
 def run_evaluation(recommender, test_file: str = 'merged_test.csv', 
                   data_dir: str = 'data/processed',
                   model_name: str = 'collaborative',
@@ -285,6 +318,9 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
         
         # Save to local filesystem
         save_evaluation_results(results, model_name=model_name)
+        
+        # Export metrics to Prometheus
+        export_metrics_to_prometheus(results, model_type=model_name)
         
         # Print nicely formatted results by k value
         print("\nEvaluation Results:")

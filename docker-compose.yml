@@ -1,4 +1,4 @@
-version: '3.8'
+# This file is for running the complete data pipeline and model training
 
 services:
   data-retrieval:
@@ -10,13 +10,14 @@ services:
       - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["keep-alive"]  # Keeps container running
     healthcheck:
       test: ["CMD", "test", "-f", "/app/data/raw/retrieval_complete"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+    networks:
+      - pipeline-network
 
   data-ingestion:
     build:
@@ -27,7 +28,6 @@ services:
       - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
-    command: ["keep-alive"]
     depends_on:
       data-retrieval:
         condition: service_healthy
@@ -37,6 +37,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - pipeline-network
 
   model-training:
     build:
@@ -51,20 +53,18 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./logs:/app/logs
-      - ./src:/app/src
-      - ./.git:/app/.git
       - ./config:/app/config
-
     depends_on:
       data-ingestion:
         condition: service_healthy
-    command: ["keep-alive"]
     healthcheck:
       test: ["CMD", "test", "-f", "/app/models/collaborative.pkl"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - pipeline-network
 
   dvc:
     build:
@@ -90,14 +90,17 @@ services:
     depends_on:
       model-training:
         condition: service_healthy
-    command: ["keep-alive"]
     healthcheck:
       test: ["CMD", "test", "-f", "/app/logs/dvc_complete"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+    networks:
+      - pipeline-network
+    profiles:
+      - with-dvc
 
 networks:
-  default:
+  pipeline-network:
     driver: bridge
