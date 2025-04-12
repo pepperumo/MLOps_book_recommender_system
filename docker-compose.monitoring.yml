@@ -52,10 +52,14 @@ services:
     restart: unless-stopped
     networks:
       - monitoring-network
+      - app-network  
 
 networks:
   monitoring-network:
     driver: bridge
+  app-network:  # Add this new external network reference
+    external: true
+    name: mlops_book_recommender_system_default  # The actual name of your app network
 
 volumes:
   prometheus-data:

@@ -13,7 +13,7 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 5s
     static_configs:
-      - targets: ['host.docker.internal:9998']  # Updated to your actual FastAPI port (9998)
+      - targets: ['host.docker.internal:8000']  # Updated to your actual FastAPI port 
 
   # Pushgateway for batch jobs
   - job_name: 'pushgateway'

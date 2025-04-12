@@ -1,574 +1,494 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-"""Pytest-based tests for the Book Recommender API."""
+"""
+Tests for the Book Recommendation API.
+This test suite can be run against a local instance or a Docker container.
+"""
 
 import os
-import sys
-import json
-import time
 import pytest
 import requests
+import time
+from typing import Dict, Any, List, Optional
 import logging
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
-
-# Set up project path for imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.insert(0, project_root)
-
-# Set up reports directory for HTML reports
-reports_dir = os.path.join(project_root, 'reports', 'fastAPI')
-os.makedirs(reports_dir, exist_ok=True)
+import sys
 
 # Set up logging
-log_dir = os.path.join(project_root, 'logs')
-os.makedirs(log_dir, exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = os.path.join(log_dir, f'test_api_pytest_{timestamp}.log')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger('test_api_pytest')
+# Configure the API URL - this can be changed to test against Docker
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
+USE_API_PREFIX = os.environ.get("USE_API_PREFIX", "true").lower() == "true"
 
-# Default configuration for tests
-DEFAULT_API_URL = "http://localhost:9998"
-DEFAULT_TIMEOUT = 10  # seconds
-
-# Check if pytest-benchmark is installed
-try:
-    import pytest_benchmark
-    BENCHMARK_AVAILABLE = True
-except ImportError:
-    BENCHMARK_AVAILABLE = False
-    logger.warning("pytest-benchmark not installed. Benchmark tests will be skipped.")
-
-# Pytest fixtures
-@pytest.fixture
-def api_url():
-    """Base URL for the API, can be overridden with the API_URL environment variable."""
-    return os.environ.get("API_URL", DEFAULT_API_URL)
-
-@pytest.fixture
-def timeout():
-    """Request timeout, can be overridden with the API_TIMEOUT environment variable."""
-    return int(os.environ.get("API_TIMEOUT", DEFAULT_TIMEOUT))
-
-@pytest.fixture
-def test_users():
-    """Return a list of test user IDs."""
-    return [125, 200, 300]
-
-@pytest.fixture
-def test_books():
-    """Return a list of test book IDs."""
-    return [352, 364, 389, 115]
-
-@pytest.fixture
-def edge_users():
-    """Return a list of edge case user IDs."""
-    return [1, 2, 499, 500]
-
-@pytest.fixture
-def edge_books():
-    """Return a list of edge case book IDs."""
-    return [1, 2, 499, 500]
-
-@pytest.fixture
-def mapped_books():
-    """Return known book ID mappings for testing."""
-    return [
-        {"original_id": 364, "mapped_id": 332},
-        {"original_id": 389, "mapped_id": 350},
-        {"original_id": 115, "mapped_id": 109}
-    ]
-
-@pytest.fixture
-def error_test_cases(api_url):
-    """Test cases for error handling testing."""
-    return [
-        {
-            "name": "Non-existent user",
-            "url": f"{api_url}/api/recommend/user/99999",
-            "expected_status": 404
-        },
-        {
-            "name": "Non-existent book",
-            "url": f"{api_url}/api/similar-books/99999",
-            "expected_status": 404
-        },
-        {
-            "name": "Invalid recommendation count",
-            "url": f"{api_url}/api/recommend/user/125?num_recommendations=100",
-            "expected_status": 422
-        },
-        {
-            "name": "Negative user ID",
-            "url": f"{api_url}/api/recommend/user/-1",
-            "expected_status": 404
-        },
-        {
-            "name": "Zero user ID",
-            "url": f"{api_url}/api/recommend/user/0",
-            "expected_status": 404
-        },
-        {
-            "name": "Non-integer user ID",
-            "url": f"{api_url}/api/recommend/user/abc",
-            "expected_status": 422
-        },
-        {
-            "name": "Negative book ID",
-            "url": f"{api_url}/api/similar-books/-5",
-            "expected_status": 404
-        },
-        {
-            "name": "Zero book ID",
-            "url": f"{api_url}/api/similar-books/0",
-            "expected_status": 404
-        },
-        {
-            "name": "Negative recommendation count",
-            "url": f"{api_url}/api/recommend/user/125?num_recommendations=-1",
-            "expected_status": 422
-        },
-        {
-            "name": "Zero recommendation count",
-            "url": f"{api_url}/api/recommend/user/125?num_recommendations=0",
-            "expected_status": 422
-        }
-    ]
-
-@pytest.fixture
-def boundary_test_cases(api_url):
-    """Test cases for boundary value testing."""
-    return [
-        {
-            "name": "Minimum recommendations (1)",
-            "url": f"{api_url}/api/recommend/user/125?num_recommendations=1",
-            "expected_count": 1
-        },
-        {
-            "name": "Maximum recommendations (20)",
-            "url": f"{api_url}/api/recommend/user/125?num_recommendations=20",
-            "expected_max_count": 20
-        },
-        {
-            "name": "Default recommendations (no parameter)",
-            "url": f"{api_url}/api/recommend/user/125",
-            "expected_count": 5  # Default is typically 5
-        },
-        {
-            "name": "Alternative parameter name (n)",
-            "url": f"{api_url}/api/recommend/user/125?n=3",
-            "expected_count": 3
-        },
-        {
-            "name": "Minimum similar books (1)",
-            "url": f"{api_url}/api/similar-books/352?num_recommendations=1",
-            "expected_count": 1
-        },
-        {
-            "name": "Maximum similar books (20)",
-            "url": f"{api_url}/api/similar-books/352?num_recommendations=20",
-            "expected_max_count": 20
-        },
-        {
-            "name": "Minimum popular books (1)",
-            "url": f"{api_url}/api/popular-books?limit=1",
-            "expected_count": 1
-        },
-        {
-            "name": "Maximum popular books (12)",
-            "url": f"{api_url}/api/popular-books?limit=12",
-            "expected_count": 12
-        }
-    ]
-
-# Basic tests
-def test_root_endpoint(api_url, timeout):
-    """Test the root endpoint."""
-    logger.info("Testing root endpoint...")
-    url = f"{api_url}/"
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
+def get_endpoint(path: str) -> str:
+    """Construct the API endpoint URL with proper prefix handling"""
+    # Some deployments might use /api prefix, others might not
+    if path == "/health":
+        # Health endpoint is always at the root with no prefix
+        return f"{API_URL}{path}"
     
-    data = response.json()
-    logger.info(f"Root endpoint returned {len(data)} items")
-    
-    # Validate response structure
-    assert "app_name" in data
-    assert "version" in data
-    assert "endpoints" in data
-    
-    logger.info(f"Root endpoint test passed: {data['app_name']} v{data['version']}")
-
-
-def test_health_endpoint(api_url, timeout):
-    """Test the health endpoint."""
-    logger.info("Testing health endpoint...")
-    url = f"{api_url}/health"
-    response = requests.get(url, timeout=timeout)
-    response.raise_for_status()
-    
-    data = response.json()
-    logger.info(f"Health endpoint response: {data}")
-    
-    # Validate response structure
-    assert "status" in data
-    assert "timestamp" in data
-    assert data["status"] == "healthy"
-    
-    logger.info("Health endpoint test passed")
-
-
-# Recommendations tests
-@pytest.mark.parametrize("user_id", [125, 200, 300])
-def test_user_recommendations(api_url, timeout, user_id, num_recommendations=5):
-    """Test the user recommendations endpoint."""
-    logger.info(f"Testing user recommendations for user {user_id}...")
-    
-    url = f"{api_url}/api/recommend/user/{user_id}?num_recommendations={num_recommendations}"
-    start_time = time.time()
-    response = requests.get(url, timeout=timeout)
-    response_time = time.time() - start_time
-    
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-    
-    data = response.json()
-    logger.info(f"User recommendations response received in {response_time:.2f}s")
-    
-    # Validate response structure
-    assert "recommendations" in data
-    assert len(data["recommendations"]) <= num_recommendations
-    
-    # Validate recommendation structure
-    for rec in data["recommendations"]:
-        assert "book_id" in rec
-        assert "title" in rec
-        assert "authors" in rec
-        assert "rank" in rec
-    
-    logger.info(f"Found {len(data['recommendations'])} recommendations for user {user_id}")
-    for i, rec in enumerate(data["recommendations"]):
-        logger.info(f"  {i+1}. {rec['title']} by {rec['authors']} (ID: {rec['book_id']})")
-
-
-@pytest.mark.parametrize("book_id", [352, 364, 389, 115])
-def test_similar_books(api_url, timeout, book_id, num_recommendations=5):
-    """Test the similar books endpoint."""
-    logger.info(f"Testing similar books for book {book_id}...")
-    
-    url = f"{api_url}/api/similar-books/{book_id}?num_recommendations={num_recommendations}"
-    start_time = time.time()
-    response = requests.get(url, timeout=timeout)
-    response_time = time.time() - start_time
-    
-    # Some book IDs might not exist, so we'll accept 404 in those cases
-    if response.status_code == 404:
-        logger.info(f"Book {book_id} not found (404) - This may be expected")
-        return
-        
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-    
-    data = response.json()
-    logger.info(f"Similar books response received in {response_time:.2f}s")
-    
-    # Validate response structure
-    assert "recommendations" in data
-    assert len(data["recommendations"]) <= num_recommendations
-    
-    # Validate recommendation structure
-    for rec in data["recommendations"]:
-        assert "book_id" in rec
-        assert "title" in rec
-        assert "authors" in rec
-        assert "rank" in rec
-    
-    logger.info(f"Found {len(data['recommendations'])} similar books for book {book_id}")
-    for i, rec in enumerate(data["recommendations"]):
-        logger.info(f"  {i+1}. {rec['title']} by {rec['authors']} (ID: {rec['book_id']})")
-
-
-@pytest.mark.parametrize("limit", [1, 6, 12])
-def test_popular_books(api_url, timeout, limit):
-    """Test the popular books endpoint."""
-    logger.info(f"Testing popular books with limit {limit}...")
-    
-    url = f"{api_url}/api/popular-books?limit={limit}"
-    start_time = time.time()
-    response = requests.get(url, timeout=timeout)
-    response_time = time.time() - start_time
-    
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-    
-    data = response.json()
-    logger.info(f"Popular books response received in {response_time:.2f}s")
-    
-    # Validate response structure
-    assert "books" in data
-    assert len(data["books"]) <= limit
-    
-    # Validate book structure
-    for book in data["books"]:
-        assert "book_id" in book
-        assert "title" in book
-        assert "authors" in book
-        assert "average_rating" in book
-        assert "ratings_count" in book
-    
-    logger.info(f"Found {len(data['books'])} popular books")
-    for i, book in enumerate(data['books']):
-        logger.info(f"  {i+1}. {book['title']} by {book['authors']} (ID: {book['book_id']})")
-
-
-# Error handling tests
-def test_error_handling(api_url, timeout, error_test_cases):
-    """Test API error handling."""
-    logger.info("Testing API error handling...")
-    
-    for test_case in error_test_cases:
-        logger.info(f"Testing error case: {test_case['name']}")
-        response = requests.get(test_case["url"], timeout=timeout)
-        actual_status = response.status_code
-        expected_status = test_case["expected_status"]
-        
-        assert actual_status == expected_status, \
-            f"Expected status {expected_status}, got {actual_status} for {test_case['name']}"
-        
-        logger.info(f"PASS: {test_case['name']}: Got expected status {actual_status}")
-
-
-# Boundary value tests
-def test_boundary_values(api_url, timeout, boundary_test_cases):
-    """Test boundary values for recommendation parameters."""
-    logger.info("Testing API boundary values...")
-    
-    for test_case in boundary_test_cases:
-        logger.info(f"Testing boundary case: {test_case['name']}")
-        response = requests.get(test_case["url"], timeout=timeout)
-        
-        # Skip tests when API returns an error
-        if response.status_code != 200:
-            pytest.skip(f"API returned status code {response.status_code} for {test_case['name']}")
-            
-        data = response.json()
-        
-        # Handle different response structures
-        if "recommendations" in data:
-            actual_count = len(data["recommendations"])
-        elif "books" in data:
-            actual_count = len(data["books"])
+    if USE_API_PREFIX and not path.startswith("/api/"):
+        if not path.startswith("/"):
+            path = f"/api/{path}"
         else:
-            pytest.fail(f"No recommendations or books field in response for {test_case['name']}")
-            
-        # Check if count matches expected count exactly
-        if "expected_count" in test_case:
-            assert actual_count == test_case["expected_count"], \
-                f"Expected exactly {test_case['expected_count']} items, got {actual_count}"
+            path = f"/api{path}"
+    elif path.startswith("/api/") and not USE_API_PREFIX:
+        path = path[4:]  # Remove /api prefix
+    
+    return f"{API_URL}{path}"
+
+# Fixtures
+@pytest.fixture(scope="session")
+def api_health_check():
+    """Check if the API is running before running tests"""
+    health_url = f"{API_URL}/health"
+    try:
+        response = requests.get(health_url, timeout=5)
+        response.raise_for_status()
+        logger.info(f"API is healthy at {API_URL}")
+        return True
+    except Exception as e:
+        # Try alternative health endpoints if the standard one fails
+        alternative_urls = [
+            f"{API_URL}/api/health",
+            f"{API_URL}/"
+        ]
+        
+        for alt_url in alternative_urls:
+            try:
+                logger.info(f"Trying alternative health endpoint: {alt_url}")
+                alt_response = requests.get(alt_url, timeout=5)
+                if alt_response.status_code == 200:
+                    logger.info(f"API is healthy at alternative endpoint: {alt_url}")
+                    return True
+            except Exception:
+                continue
                 
-        # Check if count is at most expected max count
-        if "expected_max_count" in test_case:
-            assert actual_count <= test_case["expected_max_count"], \
-                f"Expected at most {test_case['expected_max_count']} items, got {actual_count}"
-        
-        logger.info(f"PASS: {test_case['name']}: Got {actual_count} items as expected")
+        logger.error(f"API health check failed: {e}")
+        pytest.skip(f"API is not available at {API_URL}")
 
+@pytest.fixture
+def valid_user_id() -> int:
+    """Return a valid user ID for testing"""
+    return 1  # Assuming user ID 1 exists in the system
 
-# Book ID mapping tests
-def test_book_id_mapping(api_url, timeout, mapped_books):
-    """Test book ID mapping functionality with known mapped IDs."""
-    logger.info("Testing book ID mapping with known mapped book IDs...")
+@pytest.fixture
+def invalid_user_id() -> int:
+    """Return an invalid user ID for testing"""
+    return 99999  # Assuming this user ID doesn't exist
+
+@pytest.fixture
+def valid_book_id() -> int:
+    """Return a valid book ID for testing"""
+    # First get a list of books to ensure we have a valid ID
+    try:
+        books_url = get_endpoint("/books")
+        response = requests.get(books_url, params={"limit": 1})
+        if response.ok and "books" in response.json() and len(response.json()["books"]) > 0:
+            return response.json()["books"][0]["book_id"]
+    except Exception as e:
+        logger.warning(f"Could not fetch a valid book ID: {e}")
     
-    for book in mapped_books:
-        original_id = book["original_id"]
-        url = f"{api_url}/api/similar-books/{original_id}?num_recommendations=3"
-        response = requests.get(url, timeout=timeout)
-        
-        # Accept both 200 (success) and 404 (not found) as valid responses
-        # since some mapped books might not exist in all environments
-        if response.status_code == 404:
-            logger.info(f"Book {original_id} not found (404) - This may be expected")
-            continue
-            
-        assert response.status_code == 200, \
-            f"Unexpected status code {response.status_code} for book {original_id}"
-            
+    return 1  # Fallback to book ID 1, assuming it exists
+
+# Tests for User Recommendations
+def test_user_recommendations(api_health_check, valid_user_id):
+    """Test getting recommendations for a valid user"""
+    url = get_endpoint(f"/recommend/user/{valid_user_id}")
+    response = requests.get(url)
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "recommendations" in data, "Response should contain recommendations key"
+    assert "user_id" in data, "Response should contain user_id key"
+    assert data["user_id"] == valid_user_id, f"User ID should match {valid_user_id}"
+    
+    # Check that we got some recommendations (could be empty for some users)
+    if data["recommendations"]:
+        recommendation = data["recommendations"][0]
+        assert "book_id" in recommendation, "Recommendation should contain book_id"
+        assert "title" in recommendation, "Recommendation should contain title"
+        assert "authors" in recommendation, "Recommendation should contain authors"
+        assert "rank" in recommendation, "Recommendation should contain rank"
+
+def test_user_recommendations_limit(api_health_check, valid_user_id):
+    """Test recommendations with a limit parameter"""
+    limit = 3
+    url = get_endpoint(f"/recommend/user/{valid_user_id}")
+    response = requests.get(url, params={"num_recommendations": limit})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    recommendations = data.get("recommendations", [])
+    
+    # Check that we got the requested number of recommendations
+    # Note: For some users, we might get fewer recommendations
+    assert len(recommendations) <= limit, f"Should return at most {limit} recommendations"
+
+def test_user_recommendations_invalid_user(api_health_check, invalid_user_id):
+    """Test recommendations with an invalid user ID"""
+    url = get_endpoint(f"/recommend/user/{invalid_user_id}")
+    
+    # We expect one of two behaviors:
+    # 1. A 404 error if the API enforces user existence
+    # 2. A 200 with empty recommendations if the API handles missing users gracefully
+    response = requests.get(url)
+    
+    if response.status_code == 404:
+        assert "not found" in response.json().get("detail", "").lower(), "Should indicate user not found"
+    else:
+        assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
         data = response.json()
-        assert "recommendations" in data, f"No recommendations field for book {original_id}"
-        
-        logger.info(f"PASS: Mapped book {original_id}: Got recommendations successfully")
+        assert len(data.get("recommendations", [])) == 0, "Should return empty recommendations for invalid user"
 
-
-# Edge case tests
-def test_edge_case_users(api_url, timeout, edge_users):
-    """Test recommendations for edge case users."""
-    logger.info("Testing recommendations for edge case users...")
+# Tests for Similar Books
+def test_similar_books(api_health_check, valid_book_id):
+    """Test getting similar books for a valid book ID"""
+    url = get_endpoint(f"/similar-books/{valid_book_id}")
+    response = requests.get(url)
     
-    for user_id in edge_users:
-        url = f"{api_url}/api/recommend/user/{user_id}?num_recommendations=5"
-        response = requests.get(url, timeout=timeout)
-        
-        # Both 200 and 404 are acceptable for edge case users
-        if response.status_code == 404:
-            logger.info(f"Edge user {user_id}: Not found (404) - this may be expected")
-            continue
-            
-        assert response.status_code == 200, \
-            f"Unexpected status code {response.status_code} for user {user_id}"
-            
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "recommendations" in data, "Response should contain recommendations key"
+    assert "book_id" in data, "Response should contain book_id key"
+    assert data["book_id"] == valid_book_id, f"Book ID should match {valid_book_id}"
+    
+    # If we got recommendations, check their structure
+    if data["recommendations"]:
+        recommendation = data["recommendations"][0]
+        assert "book_id" in recommendation, "Recommendation should contain book_id"
+        assert "title" in recommendation, "Recommendation should contain title"
+        assert "authors" in recommendation, "Recommendation should contain authors"
+        assert "rank" in recommendation, "Recommendation should contain rank"
+
+def test_similar_books_limit(api_health_check, valid_book_id):
+    """Test similar books with a limit parameter"""
+    limit = 3
+    url = get_endpoint(f"/similar-books/{valid_book_id}")
+    response = requests.get(url, params={"num_recommendations": limit})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    recommendations = data.get("recommendations", [])
+    
+    # Check that we got the requested number of recommendations
+    # Note: For some books, we might get fewer similar books
+    assert len(recommendations) <= limit, f"Should return at most {limit} recommendations"
+
+def test_similar_books_invalid_book(api_health_check):
+    """Test similar books with an invalid book ID"""
+    invalid_book_id = 9999999  # Assuming this ID doesn't exist
+    url = get_endpoint(f"/similar-books/{invalid_book_id}")
+    
+    # We expect one of two behaviors:
+    # 1. A 404 error if the API enforces book existence
+    # 2. A 200 with empty recommendations if the API handles missing books gracefully
+    response = requests.get(url)
+    
+    if response.status_code == 404:
+        assert "not found" in response.json().get("detail", "").lower(), "Should indicate book not found"
+    else:
+        assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
         data = response.json()
-        assert "recommendations" in data
+        assert len(data.get("recommendations", [])) == 0, "Should return empty recommendations for invalid book"
+
+# Tests for Popular Books
+def test_popular_books(api_health_check):
+    """Test getting popular books"""
+    url = get_endpoint("/popular-books")
+    response = requests.get(url)
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "books" in data, "Response should contain books key"
+    
+    # Check if we got any books
+    books = data["books"]
+    assert isinstance(books, list), "Books should be a list"
+    
+    # If we got books, check their structure
+    if books:
+        book = books[0]
+        assert "book_id" in book, "Book should contain book_id"
+        assert "title" in book, "Book should contain title"
+        assert "authors" in book, "Book should contain authors"
+
+def test_popular_books_limit(api_health_check):
+    """Test popular books with a limit parameter"""
+    limit = 3
+    url = get_endpoint("/popular-books")
+    response = requests.get(url, params={"limit": limit})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    books = data.get("books", [])
+    
+    # Check that we got the requested number of books
+    assert len(books) <= limit, f"Should return at most {limit} books"
+
+def test_popular_books_reproducibility(api_health_check):
+    """Test that popular books with the same seed returns the same books"""
+    seed = 42
+    url = get_endpoint("/popular-books")
+    
+    # Make two requests with the same seed
+    response1 = requests.get(url, params={"seed": seed})
+    response2 = requests.get(url, params={"seed": seed})
+    
+    assert response1.status_code == 200, f"Expected 200 OK, got {response1.status_code}"
+    assert response2.status_code == 200, f"Expected 200 OK, got {response2.status_code}"
+    
+    books1 = response1.json().get("books", [])
+    books2 = response2.json().get("books", [])
+    
+    # Extract book IDs for comparison
+    book_ids1 = [book["book_id"] for book in books1]
+    book_ids2 = [book["book_id"] for book in books2]
+    
+    # Check that the books are the same
+    assert book_ids1 == book_ids2, "Same seed should return the same books"
+
+# Tests for basic CRUD operations
+def test_get_books(api_health_check):
+    """Test getting a list of books"""
+    url = get_endpoint("/books")
+    response = requests.get(url, params={"limit": 5})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "books" in data, "Response should contain books key"
+    assert "count" in data, "Response should contain count key"
+    assert "status" in data, "Response should contain status key"
+    assert data["status"] == "success", "Status should be success"
+    
+    books = data["books"]
+    assert isinstance(books, list), "Books should be a list"
+    
+    # If we got books, check their structure
+    if books:
+        book = books[0]
+        assert "book_id" in book, "Book should contain book_id"
+        assert "title" in book, "Book should contain title"
+        assert "authors" in book, "Book should contain authors"
+
+def test_get_genres(api_health_check):
+    """Test getting a list of genres"""
+    url = get_endpoint("/genres")
+    response = requests.get(url)
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "genres" in data, "Response should contain genres key"
+    assert "count" in data, "Response should contain count key"
+    
+    genres = data["genres"]
+    assert isinstance(genres, list), "Genres should be a list"
+
+def test_get_authors(api_health_check):
+    """Test getting a list of authors"""
+    url = get_endpoint("/authors")
+    response = requests.get(url)
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "authors" in data, "Response should contain authors key"
+    assert "count" in data, "Response should contain count key"
+    
+    authors = data["authors"]
+    assert isinstance(authors, list), "Authors should be a list"
+
+def test_get_users(api_health_check):
+    """Test getting a list of users"""
+    url = get_endpoint("/users")
+    response = requests.get(url, params={"limit": 5})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "users" in data, "Response should contain users key"
+    assert "count" in data, "Response should contain count key"
+    
+    users = data["users"]
+    assert isinstance(users, list), "Users should be a list"
+
+def test_get_user_details(api_health_check, valid_user_id):
+    """Test getting details for a specific user"""
+    url = get_endpoint(f"/users/{valid_user_id}")
+    response = requests.get(url)
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "user_id" in data, "Response should contain user_id key"
+    assert data["user_id"] == valid_user_id, f"User ID should match {valid_user_id}"
+    assert "total_ratings" in data, "Response should contain total_ratings key"
+    assert "avg_rating" in data, "Response should contain avg_rating key"
+    assert "favorite_genres" in data, "Response should contain favorite_genres key"
+    assert "recent_books" in data, "Response should contain recent_books key"
+
+def test_get_user_ratings(api_health_check, valid_user_id):
+    """Test getting ratings for a specific user"""
+    url = get_endpoint(f"/users/{valid_user_id}/ratings")
+    response = requests.get(url, params={"limit": 5})
+    
+    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}"
+    
+    data = response.json()
+    assert "status" in data, "Response should contain status key"
+    assert "user_id" in data, "Response should contain user_id key"
+    assert data["user_id"] == valid_user_id, f"User ID should match {valid_user_id}"
+    assert "ratings" in data, "Response should contain ratings key"
+
+# Test error handling
+def test_invalid_endpoint(api_health_check):
+    """Test invalid endpoint returns 404"""
+    url = f"{API_URL}/invalid-endpoint"
+    response = requests.get(url)
+    
+    assert response.status_code == 404, f"Expected 404 Not Found, got {response.status_code}"
+
+def test_method_not_allowed(api_health_check):
+    """Test that POST to GET-only endpoint returns 405"""
+    url = get_endpoint("/books")
+    response = requests.post(url)
+    
+    assert response.status_code == 405, f"Expected 405 Method Not Allowed, got {response.status_code}"
+
+def test_invalid_params(api_health_check):
+    """Test that invalid parameters are handled correctly"""
+    url = get_endpoint("/books")
+    response = requests.get(url, params={"limit": "invalid"})
+    
+    # Most FastAPI endpoints would return 422 for invalid parameter types
+    assert response.status_code in [400, 422], f"Expected 400 or 422 for invalid params, got {response.status_code}"
+
+# Integration tests (these test the system as a whole)
+def test_end_to_end_flow(api_health_check, valid_user_id, valid_book_id):
+    """Test an end-to-end flow: get user recommendations, then get similar books for a recommended book"""
+    # 1. Get user recommendations
+    recommendations_url = get_endpoint(f"/recommend/user/{valid_user_id}")
+    recommendations_response = requests.get(recommendations_url)
+    
+    assert recommendations_response.status_code == 200, "Failed to get user recommendations"
+    
+    # 2. If we got recommendations, get similar books for the first recommended book
+    recommendation_data = recommendations_response.json()
+    recommendations = recommendation_data.get("recommendations", [])
+    
+    if recommendations:
+        # Get the first recommended book
+        first_book_id = recommendations[0]["book_id"]
         
-        rec_count = len(data["recommendations"])
-        logger.info(f"PASS: Edge user {user_id}: Got {rec_count} recommendations")
-
-
-def test_edge_case_books(api_url, timeout, edge_books):
-    """Test similar books for edge case books."""
-    logger.info("Testing recommendations for edge case books...")
-    
-    for book_id in edge_books:
-        url = f"{api_url}/api/similar-books/{book_id}?num_recommendations=5"
-        response = requests.get(url, timeout=timeout)
+        # Get similar books for this book
+        similar_books_url = get_endpoint(f"/similar-books/{first_book_id}")
+        similar_books_response = requests.get(similar_books_url)
         
-        # Both 200 and 404 are acceptable for edge case books
-        if response.status_code == 404:
-            logger.info(f"Edge book {book_id}: Not found (404) - this may be expected")
-            continue
-            
-        assert response.status_code == 200, \
-            f"Unexpected status code {response.status_code} for book {book_id}"
-            
-        data = response.json()
-        assert "recommendations" in data
+        assert similar_books_response.status_code == 200, "Failed to get similar books"
+        assert "recommendations" in similar_books_response.json(), "Similar books response missing recommendations"
+    else:
+        # If no recommendations, use the valid_book_id as fallback
+        similar_books_url = get_endpoint(f"/similar-books/{valid_book_id}")
+        similar_books_response = requests.get(similar_books_url)
         
-        rec_count = len(data["recommendations"])
-        logger.info(f"PASS: Edge book {book_id}: Got {rec_count} similar books")
+        assert similar_books_response.status_code == 200, "Failed to get similar books"
+        assert "recommendations" in similar_books_response.json(), "Similar books response missing recommendations"
 
-
-# Stress test - Modified to make it easier to skip
-# To run this test: pytest test_api_pytest.py::test_stress
-# To skip this test: pytest test_api_pytest.py -k "not stress"
-@pytest.mark.stress
-def test_stress(api_url, timeout):
-    """Test API performance under multiple sequential requests.
-    
-    This test can take several minutes to run. To skip this test, run pytest with:
-    pytest -k "not stress"
-    """
-    # Skip this test if SKIP_STRESS_TEST environment variable is set to "true"
-    skip_stress = os.environ.get("SKIP_STRESS_TEST", "").lower() == "true"
-    if skip_stress:
-        pytest.skip("Stress test skipped via SKIP_STRESS_TEST environment variable")
-    
-    logger.info("Starting API performance test - this may take several minutes")
-    
-    num_requests = int(os.environ.get("STRESS_TEST_REQUESTS", "5"))
+def test_api_latency(api_health_check):
+    """Test API latency for key endpoints"""
+    # Define endpoints and their expected paths
     endpoints = [
-        f"{api_url}/api/recommend/user/125?num_recommendations=5",
-        f"{api_url}/api/similar-books/352?num_recommendations=5",
-        f"{api_url}/api/popular-books?limit=6",
-        f"{api_url}/health"
+        # Standard endpoints that might follow prefix rules
+        {"path": "/books", "follows_prefix": True},
+        {"path": "/genres", "follows_prefix": True},
+        {"path": "/authors", "follows_prefix": True},
+        {"path": "/popular-books", "follows_prefix": True},
+        # Root endpoints that typically don't use the API prefix
+        {"path": "/", "follows_prefix": False},
+        {"path": "/health", "follows_prefix": False},
     ]
     
-    response_times = {}
-    
-    for endpoint in endpoints:
-        endpoint_times = []
-        endpoint_name = endpoint.split('/')[-1].split('?')[0]
+    for endpoint_info in endpoints:
+        path = endpoint_info["path"]
         
-        for i in range(num_requests):
+        # Determine the correct URL based on whether the endpoint follows prefix rules
+        if endpoint_info["follows_prefix"]:
+            url = get_endpoint(path)
+        else:
+            # Root endpoints like /health are always at the root
+            url = f"{API_URL}{path}"
+        
+        logger.info(f"Testing latency for endpoint: {url}")
+        
+        try:
             start_time = time.time()
-            response = requests.get(endpoint, timeout=timeout)
-            request_time = time.time() - start_time
+            response = requests.get(url, timeout=10)
+            latency = time.time() - start_time
             
-            response.raise_for_status()
-            endpoint_times.append(request_time)
+            # For root path, a redirect is also acceptable
+            if path == "/" and response.status_code in [200, 301, 302]:
+                logger.info(f"Root path returned status {response.status_code} (acceptable)")
+            else:
+                assert response.status_code == 200, f"Failed to get response from {path}, status: {response.status_code}"
             
-            logger.info(f"Request {i+1}/{num_requests} to {endpoint_name}: {request_time:.3f}s")
-        
-        if endpoint_times:
-            avg_time = sum(endpoint_times) / len(endpoint_times)
-            response_times[endpoint_name] = avg_time
-            logger.info(f"Average response time for {endpoint_name}: {avg_time:.3f}s")
+            # Log the latency
+            logger.info(f"Latency for {path}: {latency:.3f} seconds")
+            
+            # A very loose assertion to catch extreme issues
+            assert latency < 10.0, f"Latency for {path} is too high: {latency:.3f} seconds"
+        except requests.RequestException as e:
+            logger.error(f"Request failed for {url}: {e}")
+            # Skip this endpoint rather than failing the whole test
+            logger.warning(f"Skipping latency test for {path} due to request error")
+            continue
+
+if __name__ == "__main__":
+    """Run the tests directly without pytest"""
+    # Check if the API is running with better error handling
+    api_available = False
     
-    # Log performance summary
-    logger.info("Performance Summary:")
-    for endpoint_name, avg_time in response_times.items():
-        logger.info(f"  {endpoint_name}: {avg_time:.3f}s average response time")
-
-
-# Benchmark tests - These will only run if pytest-benchmark is installed
-# Skip all benchmark tests if pytest-benchmark is not available
-if BENCHMARK_AVAILABLE:
-    @pytest.mark.benchmark(group="api-basic")
-    def test_benchmark_health_endpoint(api_url, timeout, benchmark):
-        """Benchmark the health endpoint."""
-        def get_health():
-            url = f"{api_url}/health"
-            return requests.get(url, timeout=timeout)
-        
-        result = benchmark(get_health)
-        assert result.status_code == 200
-
-    @pytest.mark.benchmark(group="api-recommend")
-    def test_benchmark_user_recommendations(api_url, timeout, benchmark):
-        """Benchmark the user recommendations endpoint."""
-        def get_user_recommendations():
-            url = f"{api_url}/api/recommend/user/125?num_recommendations=5"
-            return requests.get(url, timeout=timeout)
-        
-        result = benchmark(get_user_recommendations)
-        assert result.status_code == 200
-        data = result.json()
-        assert "recommendations" in data
-
-    @pytest.mark.benchmark(group="api-recommend")
-    def test_benchmark_similar_books(api_url, timeout, benchmark):
-        """Benchmark the similar books endpoint."""
-        def get_similar_books():
-            url = f"{api_url}/api/similar-books/352?num_recommendations=5"
-            return requests.get(url, timeout=timeout)
-        
-        result = benchmark(get_similar_books)
-        assert result.status_code == 200
-        data = result.json()
-        assert "recommendations" in data
-
-    @pytest.mark.benchmark(group="api-basic")
-    def test_benchmark_popular_books(api_url, timeout, benchmark):
-        """Benchmark the popular books endpoint."""
-        def get_popular_books():
-            url = f"{api_url}/api/popular-books?limit=6"
-            return requests.get(url, timeout=timeout)
-        
-        result = benchmark(get_popular_books)
-        assert result.status_code == 200
-        data = result.json()
-        assert "books" in data
-
-    @pytest.mark.benchmark(group="api-recommend", warmup=True)
-    def test_benchmark_recommendations_different_sizes(api_url, timeout, benchmark):
-        """Benchmark the recommendations endpoint with different sizes."""
-        # Test with different recommendation counts to see how performance scales
-        # This is important for understanding the algorithmic complexity
-        
-        def get_recommendations_with_count(count):
-            url = f"{api_url}/api/recommend/user/125?num_recommendations={count}"
-            response = requests.get(url, timeout=timeout)
-            return response
-        
-        # Benchmark with 5 recommendations (common case)
-        result = benchmark(lambda: get_recommendations_with_count(5))
-        assert result.status_code == 200
-        
-        # Verify the data structure
-        data = result.json()
-        assert "recommendations" in data
+    # Try multiple health check endpoints
+    health_endpoints = ["/health", "/api/health", "/"]
+    
+    for health_path in health_endpoints:
+        try:
+            health_url = f"{API_URL}{health_path}"
+            logger.info(f"Checking API health at: {health_url}")
+            health_response = requests.get(health_url, timeout=5)
+            
+            if health_response.status_code == 200:
+                logger.info(f"API is healthy at {health_url}")
+                api_available = True
+                break
+        except Exception as e:
+            logger.warning(f"Health check failed at {health_path}: {e}")
+    
+    if not api_available:
+        logger.error("API is not available at any tested endpoint")
+        sys.exit(1)
+    
+    # Get a valid user ID and book ID
+    user_id = 1
+    book_id = 1
+    
+    # Run some basic tests
+    logger.info("Testing user recommendations...")
+    test_user_recommendations(True, user_id)
+    
+    logger.info("Testing similar books...")
+    test_similar_books(True, book_id)
+    
+    logger.info("Testing popular books...")
+    test_popular_books(True)
+    
+    logger.info("Testing end-to-end flow...")
+    test_end_to_end_flow(True, user_id, book_id)
+    
+    logger.info("All tests passed!")

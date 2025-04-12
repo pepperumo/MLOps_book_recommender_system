@@ -1,29 +1,46 @@
 #!/bin/bash
-set -e
+set -e  # Exit immediately on error
 
-echo "Starting FastAPI Book Recommender service..."
+echo "🚀 Starting FastAPI service..."
 
-# Check if required Python packages are installed
-echo "Checking dependencies..."
-pip install --no-cache-dir -r requirements.txt
+# Ensure necessary directories exist
+mkdir -p /app/logs /app/models /app/data/processed
 
-# Make sure directories exist
-mkdir -p /app/logs
+# Wait for the model to be available
+MODEL_PATH="/app/models/collaborative.pkl"
+echo "⏳ Waiting for model to be available at: $MODEL_PATH"
+while [ ! -f "$MODEL_PATH" ]; do
+    echo "🚨 Model not yet available. Retrying in 10s..."
+    sleep 10
+done
+echo "✅ Model found. Starting API server."
 
-# Set environment variables if not already set
-export PORT=${PORT:-9998}
-export HOST=${HOST:-0.0.0.0}
-export LOG_LEVEL=${LOG_LEVEL:-info}
+# Set up Python environment
+export PYTHONPATH="${PYTHONPATH}:/app"
+pip install -e .
 
-# Check path to API file
-cd /app
-API_FILE="/app/src/fastAPI/api.py"
+# Create compatibility link for imports
+mkdir -p /app/src/api
+echo "from src.fastAPI.api import app" > /app/src/api/__init__.py
 
-if [ ! -f "$API_FILE" ]; then
-    echo "Error: API file not found at $API_FILE"
-    exit 1
-fi
+# Fix pickle serialization issue
+echo "🔧 Fixing model serialization issues..."
+python -c "
+import pickle
+import sys
+from src.models.train_model import CollaborativeRecommender
 
-echo "Starting FastAPI on $HOST:$PORT..."
-cd /app
-exec uvicorn src.fastAPI.api:app --host $HOST --port $PORT --log-level $LOG_LEVEL
+try:
+    with open('$MODEL_PATH', 'rb') as f:
+        model = pickle.load(f)
+    with open('$MODEL_PATH', 'wb') as f:
+        pickle.dump(model, f)
+    print('✅ Successfully fixed model pickle compatibility')
+except Exception as e:
+    print(f'❌ Error fixing model: {e}')
+    # Don't exit with error to allow API to start with limited functionality
+"
+
+# Start the FastAPI server with the correct path
+echo "🌐 Starting FastAPI server on port ${PORT:-8000}..."
+exec uvicorn src.fastAPI.api:app --host 0.0.0.0 --port ${PORT:-8000} --reload

@@ -224,12 +224,32 @@ def export_metrics_to_prometheus(results, model_type="collaborative"):
                 k = metric.split("@")[1]
                 recall_gauge.labels(k=str(k), model_type=model_type).set(value)
         
-        # Push to Prometheus Pushgateway
-        push_gateway = os.getenv('PROMETHEUS_PUSHGATEWAY', 'localhost:9091')
+        # Intelligent selection of Pushgateway endpoint
+        # First priority: Environment variable
+        # Second priority: Check if we're in Docker and use service name
+        # Third priority: Default to localhost
+        push_gateway = os.getenv('PROMETHEUS_PUSHGATEWAY', None)
+        
+        if not push_gateway:
+            # Check if we're running in Docker by looking for container indicators
+            in_docker = os.path.exists('/.dockerenv') or os.path.isfile('/proc/1/cgroup') and 'docker' in open('/proc/1/cgroup').read()
+            
+            if in_docker:
+                # Use the Docker service name when in Docker
+                push_gateway = 'pushgateway:9091'
+                print("Detected Docker environment, using pushgateway service name")
+            else:
+                # Default to localhost for local development
+                push_gateway = 'localhost:9091'
+                print("Using local Pushgateway endpoint")
+        
+        print(f"Pushing metrics to Prometheus Pushgateway at: {push_gateway}")
         push_to_gateway(push_gateway, job=f'book_recommender_evaluation', registry=registry)
         print(f"Successfully exported metrics to Prometheus pushgateway")
     except Exception as e:
         print(f"Warning: Could not push metrics to Prometheus: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
 
 
 def run_evaluation(recommender, test_file: str = 'merged_test.csv', 
