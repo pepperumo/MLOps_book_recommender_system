@@ -1,0 +1,65 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment and virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+.python-version
+
+# Node.js dependencies and build artifacts (for frontend)
+node_modules/
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.next/
+frontend/.cache/
+frontend/coverage/
+
+# Data files (these should be mounted as volumes instead)
+data/
+models/
+logs/
+
+# DVC files
+.dvc/
+dvc.lock
+
+# MLflow artifacts
+mlruns/
+
+# Notebooks
+notebooks/
+.ipynb_checkpoints/
+
+# Docker specific files
+docker-compose*.yml
+Dockerfile*
+.docker/
+
+# Docs and other non-essential files
+docs/
+README.md
+LICENSE
+*.md
+*.txt
+!requirements.txt
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
