@@ -1,0 +1,19 @@
+version: "3.8"
+services:
+  huggingface_app:
+    build:
+      context: .
+      dockerfile: docker/huggingface/Dockerfile
+    ports:
+      - "7860:7860"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PORT=8000
+      - MODEL_PATH=/app/models/collaborative.pkl
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped

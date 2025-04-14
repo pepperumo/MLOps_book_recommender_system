@@ -29,7 +29,7 @@ services:
       context: .
       dockerfile: docker/frontend/Dockerfile
     ports:
-      - "3000:80"
+      - "4000:80"
     depends_on:
       - fastapi
     restart: unless-stopped

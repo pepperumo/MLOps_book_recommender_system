@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
     networks:
       - monitoring-network
+      - app_network  # Changed from app-network to app_network to match local.yml
 
   # Grafana: Dashboard and visualization tool
   grafana:
@@ -42,6 +43,7 @@ services:
       - prometheus
     networks:
       - monitoring-network
+      - app_network  # Changed from app-network to app_network
 
   # Pushgateway: Allows pushing metrics from batch jobs like model training
   pushgateway:
@@ -52,14 +54,15 @@ services:
     restart: unless-stopped
     networks:
       - monitoring-network
-      - app-network  
+      - app_network  # Changed from app-network to app_network
 
 networks:
   monitoring-network:
     driver: bridge
-  app-network:  # Add this new external network reference
+  app_network:  # Changed from app-network to app_network
     external: true
-    name: mlops_book_recommender_system_default  # The actual name of your app network
+    # Modified name to match Docker's auto-generated network name format
+    name: mlops_book_recommender_system_app_network  # Docker prefixes with project name
 
 volumes:
   prometheus-data:
