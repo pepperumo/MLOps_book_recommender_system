@@ -68,7 +68,7 @@ if [ ! -d "/app/.git" ]; then
 fi
 
 # Ensure we are on the correct branch
-TARGET_BRANCH=${GIT_BRANCH:-main}  # Default to 'main' if GIT_BRANCH is not set
+TARGET_BRANCH=${GIT_BRANCH:-master}  # Default to 'master' if GIT_BRANCH is not set
 echo "🔄 Checking out the correct branch: $TARGET_BRANCH"
 git fetch origin || echo "⚠️ Git fetch failed; might be a new repository"
 git checkout -B "$TARGET_BRANCH" origin/"$TARGET_BRANCH" || git checkout -B "$TARGET_BRANCH"

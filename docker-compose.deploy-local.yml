@@ -3,7 +3,7 @@ services:
   fastapi:
     build:
       context: .
-      dockerfile: docker/fastapi/Dockerfile.dev
+      dockerfile: docker/fastapi/Dockerfile
     volumes:
       - ./models:/app/models
       - ./logs:/app/logs
