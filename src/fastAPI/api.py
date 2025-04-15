@@ -103,6 +103,46 @@ _BOOKS_DF = None
 _RATINGS_DF = None
 _POPULAR_BOOKS_CACHE = {}
 
+# Helper function to download files from DagsHub
+def download_from_dagshub(file_path, dagshub_url):
+    """
+    Download a file from DagsHub if it doesn't exist locally.
+    
+    Parameters
+    ----------
+    file_path : str
+        Local path where the file should be saved
+    dagshub_url : str
+        URL to download the file from
+        
+    Returns
+    -------
+    bool
+        True if download successful or file already exists, False otherwise
+    """
+    try:
+        if os.path.exists(file_path):
+            logger.info(f"File already exists at {file_path}")
+            return True
+            
+        logger.info(f"File not found at {file_path}, downloading from {dagshub_url}")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        import requests
+        response = requests.get(dagshub_url)
+        if response.status_code == 200:
+            with open(file_path, 'wb') as f:
+                f.write(response.content)
+            logger.info(f"Successfully downloaded file to {file_path}")
+            return True
+        else:
+            logger.error(f"Failed to download from DagsHub. Status code: {response.status_code}")
+            return False
+    except Exception as e:
+        logger.error(f"Error downloading file: {e}")
+        logger.debug(traceback.format_exc())
+        return False
+
 # Define response models
 class BookRecommendation(BaseModel):
     book_id: int
@@ -160,53 +200,84 @@ app.add_middleware(
 
 # Helper functions
 def get_books_df():
-    """Get and cache the books dataframe"""
+    """Get and cache the books dataframe from merged_train.csv only"""
     global _BOOKS_DF
     if (_BOOKS_DF is not None):
         return _BOOKS_DF
     
-    # Use the specific path for books data
-    books_path = os.path.join(project_root, 'data', 'processed', 'merged.csv')
+    # Use merged_train.csv directly without fallback
+    books_path = os.path.join(project_root, 'data', 'processed', 'merged_train.csv')
     
     if os.path.exists(books_path):
         logger.info(f"Loading books data from {books_path}")
-        _BOOKS_DF = pd.read_csv(books_path)
-        
-        # If merged.csv has user_id column, get unique books only
-        if 'user_id' in _BOOKS_DF.columns:
-            _BOOKS_DF = _BOOKS_DF.drop_duplicates(subset=['book_id'])
+        try:
+            _BOOKS_DF = pd.read_csv(books_path)
             
-        return _BOOKS_DF
+            # If merged data has user_id column, get unique books only
+            if 'user_id' in _BOOKS_DF.columns:
+                _BOOKS_DF = _BOOKS_DF.drop_duplicates(subset=['book_id'])
+                
+            logger.info(f"Successfully loaded books dataframe with {len(_BOOKS_DF)} books")
+            return _BOOKS_DF
+        except Exception as e:
+            logger.error(f"Error loading books data from {books_path}: {e}")
+    else:
+        logger.error(f"Books data not found at {books_path}")
     
-    logger.error(f"Books data not found at {books_path}")
+    # Return empty DataFrame if loading failed
     return pd.DataFrame()
 
 def get_ratings_df():
-    """Get and cache the ratings dataframe"""
+    """Get and cache the ratings dataframe from merged_train.csv only"""
     global _RATINGS_DF
     if _RATINGS_DF is not None:
         return _RATINGS_DF
     
-   
-    ratings_path = os.path.join(project_root, 'data', 'processed', 'merged.csv')
+    # Use merged_train.csv directly without fallback
+    ratings_path = os.path.join(project_root, 'data', 'processed', 'merged_train.csv')
     
     if os.path.exists(ratings_path):
         logger.info(f"Loading ratings data from {ratings_path}")
-        _RATINGS_DF = pd.read_csv(ratings_path)
-        return _RATINGS_DF
+        try:
+            _RATINGS_DF = pd.read_csv(ratings_path)
+            logger.info(f"Successfully loaded ratings dataframe with {len(_RATINGS_DF)} ratings")
+            return _RATINGS_DF
+        except Exception as e:
+            logger.error(f"Error loading ratings data from {ratings_path}: {e}")
+    else:
+        logger.error(f"Ratings data not found at {ratings_path}")
     
-    logger.error("Ratings data not found in any expected location")
+    # Return empty DataFrame if loading failed
     return pd.DataFrame()
 
 # Startup event to check models availability
 @app.on_event("startup")
 async def startup_event():
     """Load models and check if they're available"""
-    logger.info("Checking model availability...")
+    logger.info("Checking model and data file availability...")
     global collaborative_model
     
     try:
         start_time = time.time()
+        
+        # Define the essential files and their DagsHub URLs
+        essential_files = {
+            os.path.join(project_root, 'data', 'processed', 'book_id_mapping.csv'): 
+                "https://dagshub.com/pepperumo/MLOps_book_recommender_system/raw/master/data/processed/book_id_mapping.csv",
+            os.path.join(project_root, 'data', 'processed', 'merged_train.csv'):
+                "https://dagshub.com/pepperumo/MLOps_book_recommender_system/raw/master/data/processed/merged_train.csv",
+            os.path.join(project_root, 'models', 'collaborative.pkl'):
+                "https://dagshub.com/pepperumo/MLOps_book_recommender_system/raw/master/models/collaborative.pkl"
+        }
+        
+        # Check and download each essential file if needed
+        for file_path, dagshub_url in essential_files.items():
+            if not os.path.exists(file_path):
+                logger.warning(f"Required file not found: {file_path}")
+                if download_from_dagshub(file_path, dagshub_url):
+                    logger.info(f"Successfully downloaded {os.path.basename(file_path)}")
+                else:
+                    logger.error(f"Failed to download {os.path.basename(file_path)} from DagsHub")
         
         # Preload the data
         books_df = get_books_df()
@@ -227,8 +298,6 @@ async def startup_event():
             load_time = time.time() - start_time
             MODEL_LOAD_TIME.labels(model_type="collaborative").set(load_time)
             logger.info(f"Model load time: {load_time:.2f} seconds")
-            
-            # Remove duplicate metrics push to avoid double counting
         else:
             logger.error("Failed to load collaborative model")
     except Exception as e:

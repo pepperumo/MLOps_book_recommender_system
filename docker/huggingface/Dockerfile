@@ -29,25 +29,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy FastAPI-specific requirements
-COPY docker/fastAPI/requirements.txt /app/requirements.txt
+COPY docker/huggingface/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code
 COPY src/ ./src/
 COPY setup.py .
 
-# Copy config files
-COPY config/ ./config/
-
 # Create directories for model, data, and logs
-RUN mkdir -p /app/models /app/data/processed /app/data/raw /app/data/features /app/data/results /app/logs
-
-# Copy the model file - this model exists in the repository
-COPY models/collaborative.pkl /app/models/
-COPY models/collaborative_config.json /app/models/
-
-# Copy the entire data directory structure
-COPY data/ /app/data/
+RUN mkdir -p /app/models /app/data/processed /app/logs
 
 # Copy the built frontend from the first stage
 COPY --from=frontend-build /app/build /usr/share/nginx/html

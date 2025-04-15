@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Union, Optional, Tuple, Any
 from pathlib import Path
 import time
+import functools
 
 # Set up logging
 log_dir = os.path.join('logs')
@@ -27,22 +28,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger('predict_model')
 
+# Cache for commonly used data to avoid repeated loading
+_MODEL_CACHE = {}
+_MAPPING_CACHE = {}
+_METADATA_CACHE = {}
+
 # Import the base classes and functions from our recommender modules
 try:
-    from src.models.model_utils import BaseRecommender, load_data
+    from src.models.model_utils import BaseRecommender
     from src.models.train_model import CollaborativeRecommender
 except ImportError:
     try:
-        from models.model_utils import BaseRecommender, load_data
+        from models.model_utils import BaseRecommender
         from models.train_model import CollaborativeRecommender
     except ImportError:
-        import sys
-        import os
-        # Add the parent directory to the path to ensure we can import the module
+        # Add the parent directory to the path
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         sys.path.append(parent_dir)
         try:
-            from models.model_utils import BaseRecommender, load_data
+            from models.model_utils import BaseRecommender
             from models.train_model import CollaborativeRecommender
             logger.info("Imported from models directory after adding parent dir to path")
         except ImportError:
@@ -50,127 +54,93 @@ except ImportError:
             sys.exit(1)
 
 
-def get_book_metadata(book_ids: List[int], data_dir: str = 'data', save_to_csv: bool = False) -> pd.DataFrame:
+def get_data_dir(data_dir: str = 'data') -> str:
+    """Get the data directory, checking for environment variables first."""
+    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
+    return env_data_dir if env_data_dir else data_dir
+
+
+@functools.lru_cache(maxsize=32)
+def get_book_metadata(book_ids_tuple: Tuple[int, ...], data_dir: str = 'data') -> pd.DataFrame:
     """
-    Get metadata for books given their IDs.
+    Get metadata for books given their IDs from merged_train.csv.
+    Takes a tuple of book_ids for caching purposes.
     
     Parameters
     ----------
-    book_ids : List[int]
-        List of book IDs to get metadata for
+    book_ids_tuple : Tuple[int, ...]
+        Tuple of book IDs to get metadata for
     data_dir : str
         Path to the data directory
-    save_to_csv : bool
-        Whether to save the metadata to a CSV file
         
     Returns
     -------
     pandas.DataFrame
         DataFrame with book metadata for books that have complete metadata
     """
+    book_ids = list(book_ids_tuple)
     logger.info(f"Retrieving metadata for {len(book_ids)} books")
+    data_dir = get_data_dir(data_dir)
     
-    # Check for environment variable for data directory
-    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
-    if env_data_dir:
-        data_dir = env_data_dir
-        logger.info(f"Using data directory from environment: {data_dir}")
+    # Check if we have this metadata in the cache
+    cache_key = f"{data_dir}_{'-'.join(map(str, sorted(book_ids)))}"
+    if cache_key in _METADATA_CACHE:
+        logger.info(f"Using cached metadata for {len(book_ids)} books")
+        return _METADATA_CACHE[cache_key]
     
-    result_df = pd.DataFrame()
+    # Use merged_train.csv directly
+    merged_path = os.path.join(data_dir, 'processed', 'merged_train.csv')
     
-    # First try to get metadata from merged_train.csv
-    train_path = os.path.join(data_dir, 'processed', 'merged_train.csv')
-    if os.path.exists(train_path):
-        try:
-            df = pd.read_csv(train_path)
-            logger.info(f"Loaded merged_train.csv with shape {df.shape}")
-            logger.debug(f"Column dtypes: {df.dtypes}")
+    if not os.path.exists(merged_path):
+        logger.error(f"merged_train.csv not found at {merged_path}")
+        return pd.DataFrame()
+    
+    try:
+        df = pd.read_csv(merged_path)
+        logger.info(f"Loaded merged_train.csv with shape {df.shape}")
+        
+        if 'book_id' in df.columns:
+            result_df = df[df['book_id'].isin(book_ids)].drop_duplicates(subset=['book_id'])
+            logger.info(f"Found {len(result_df)} books in merged_train.csv")
             
-            # Check that book_id column exists
-            if 'book_id' in df.columns:
-                # Filter to the books we want
-                result_df = df[df['book_id'].isin(book_ids)].drop_duplicates(subset=['book_id'])
-                logger.info(f"Found {len(result_df)} books in merged_train.csv")
+            # Handle column name variations
+            if 'authors' not in result_df.columns and 'author' in result_df.columns:
+                result_df = result_df.rename(columns={'author': 'authors'})
+            if 'title' not in result_df.columns and 'book_title' in result_df.columns:
+                result_df = result_df.rename(columns={'book_title': 'title'})
+            
+            # Ensure required columns exist
+            required_cols = ['title', 'authors']
+            if not all(col in result_df.columns for col in required_cols):
+                logger.warning(f"Missing required columns in merged_train.csv")
+                return pd.DataFrame()
                 
-                # Ensure we have required columns (title, author)
-                required_cols = ['title', 'authors']
-                
-                # Check for column variations
-                if 'authors' not in result_df.columns and 'author' in result_df.columns:
-                    result_df = result_df.rename(columns={'author': 'authors'})
-                    
-                if 'title' not in result_df.columns and 'book_title' in result_df.columns:
-                    result_df = result_df.rename(columns={'book_title': 'title'})
-                
-                # Check if we have all required columns
-                missing_cols = [col for col in required_cols if col not in result_df.columns]
-                if missing_cols:
-                    logger.warning(f"Missing columns in merged_train.csv: {missing_cols}")
-                    # If critical columns are missing from dataset, clear result_df
-                    # so we can try with books.csv
-                    result_df = pd.DataFrame()
-        except Exception as e:
-            logger.error(f"Error reading merged_train.csv: {e}")
-            logger.debug(traceback.format_exc())
-            result_df = pd.DataFrame()
+            # Filter out books with missing or placeholder data
+            result_df = result_df.dropna(subset=required_cols)
+            result_df = result_df[~((result_df['title'].str.contains('Unknown')) & 
+                                    (result_df['authors'] == 'Unknown'))]
+            
+            logger.info(f"After filtering for complete metadata, found {len(result_df)} valid books")
+            
+            # Log any missing books
+            if len(result_df) < len(book_ids):
+                missing_ids = set(book_ids) - set(result_df['book_id'])
+                logger.warning(f"Could not find metadata for {len(missing_ids)} books: {list(missing_ids)}")
+            
+            # Cache the result
+            _METADATA_CACHE[cache_key] = result_df
+            return result_df
+            
+    except Exception as e:
+        logger.error(f"Error reading merged_train.csv: {e}")
+        logger.debug(traceback.format_exc())
     
-    # If we couldn't get all metadata from merged_train.csv, try the original books.csv
-    if result_df.empty:
-        books_path = os.path.join(data_dir, 'raw', 'books.csv')
-        if os.path.exists(books_path):
-            try:
-                df = pd.read_csv(books_path)
-                logger.info(f"Loaded books.csv with shape {df.shape}")
-                logger.debug(f"Column dtypes: {df.dtypes}")
-                
-                # Check that book_id column exists
-                if 'book_id' in df.columns:
-                    # Filter to the books we want
-                    result_df = df[df['book_id'].isin(book_ids)].drop_duplicates(subset=['book_id'])
-                    logger.info(f"Found {len(result_df)} books in books.csv")
-                    
-                    # Handle column variations
-                    if 'authors' not in result_df.columns and 'author' in result_df.columns:
-                        result_df = result_df.rename(columns={'author': 'authors'})
-                        
-                    if 'title' not in result_df.columns and 'book_title' in result_df.columns:
-                        result_df = result_df.rename(columns={'book_title': 'title'})
-            except Exception as e:
-                logger.error(f"Error reading books.csv: {e}")
-                logger.debug(traceback.format_exc())
-    
-    # Filter out books that don't have both title and authors
-    if not result_df.empty:
-        # Check for null/missing values in essential columns
-        result_df = result_df.dropna(subset=['title', 'authors'])
-        
-        # Further filter out books with "Unknown" placeholders that might have slipped through
-        result_df = result_df[~((result_df['title'].str.contains('Unknown')) & 
-                                (result_df['authors'] == 'Unknown'))]
-        
-        logger.info(f"After filtering for complete metadata, found {len(result_df)} valid books")
-        
-        # If we found fewer books than requested, log which ones are missing
-        if len(result_df) < len(book_ids):
-            missing_ids = set(book_ids) - set(result_df['book_id'])
-            logger.warning(f"Could not find metadata for {len(missing_ids)} books: {list(missing_ids)}")
-        
-        # Save metadata to CSV only if requested
-        if save_to_csv:
-            output_dir = os.path.join(data_dir, 'processed')
-            os.makedirs(output_dir, exist_ok=True)
-            metadata_file = os.path.join(output_dir, f'book_metadata_{timestamp}.csv')
-            result_df.to_csv(metadata_file, index=False)
-            logger.info(f"Saved book metadata to {metadata_file}")
-    else:
-        logger.warning(f"Could not find metadata for any of the {len(book_ids)} requested books")
-    
-    return result_df
+    return pd.DataFrame()
 
 
 def load_book_id_mapping(data_dir: str = 'data') -> Dict[int, int]:
     """
-    Load book ID mapping between original and encoded IDs.
+    Load book ID mapping with bidirectional mapping for flexibility.
     
     Parameters
     ----------
@@ -180,12 +150,13 @@ def load_book_id_mapping(data_dir: str = 'data') -> Dict[int, int]:
     Returns
     -------
     Dict[int, int]
-        Dictionary mapping encoded IDs to original IDs
+        Dictionary with bidirectional mapping
     """
-    # Check for environment variable for data directory
-    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
-    if env_data_dir:
-        data_dir = env_data_dir
+    data_dir = get_data_dir(data_dir)
+    
+    # Check if we have the mapping in cache
+    if data_dir in _MAPPING_CACHE:
+        return _MAPPING_CACHE[data_dir]
     
     mapping_path = os.path.join(data_dir, 'processed', 'book_id_mapping.csv')
     
@@ -196,14 +167,23 @@ def load_book_id_mapping(data_dir: str = 'data') -> Dict[int, int]:
     try:
         mapping_df = pd.read_csv(mapping_path)
         logger.info(f"Loaded book_id_mapping.csv with shape {mapping_df.shape}")
-        logger.debug(f"Column dtypes: {mapping_df.dtypes}")
         
         if 'book_id' in mapping_df.columns and 'book_id_encoded' in mapping_df.columns:
-            # Create mapping from encoded ID to original ID
-            encoded_to_original = {int(row['book_id_encoded']): int(row['book_id']) 
-                                  for _, row in mapping_df.iterrows()}
-            logger.info(f"Loaded {len(encoded_to_original)} book ID mappings")
-            return encoded_to_original
+            # Create bidirectional mapping
+            mapping = {}
+            
+            for _, row in mapping_df.iterrows():
+                original_id = int(row['book_id'])
+                encoded_id = int(row['book_id_encoded'])
+                
+                # Map both ways: encoded->original and original->original
+                mapping[encoded_id] = original_id
+                if original_id not in mapping:
+                    mapping[original_id] = original_id
+            
+            logger.info(f"Created bidirectional mapping with {len(mapping)} entries")
+            _MAPPING_CACHE[data_dir] = mapping
+            return mapping
         else:
             logger.warning(f"Book ID mapping file is missing required columns")
             return {}
@@ -216,6 +196,7 @@ def load_book_id_mapping(data_dir: str = 'data') -> Dict[int, int]:
 def get_popular_books(n: int = 10, data_dir: str = 'data', randomize: bool = False, seed: Optional[int] = None) -> List[int]:
     """
     Get the most popular books based on ratings count and average rating.
+    Simplified version with fewer nested conditions.
     
     Parameters
     ----------
@@ -233,20 +214,18 @@ def get_popular_books(n: int = 10, data_dir: str = 'data', randomize: bool = Fal
     List[int]
         List of book IDs for popular books
     """
-    # Check for environment variable for data directory
-    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
-    if env_data_dir:
-        data_dir = env_data_dir
+    data_dir = get_data_dir(data_dir)
     
     try:
-        # Load book metadata
-        books_path = os.path.join(data_dir, 'processed', 'books.csv')
-        merged_path = os.path.join(data_dir, 'processed', 'merged.csv')
+        # First try loading from merged_train.csv, which is our primary dataset
+        merged_path = os.path.join(data_dir, 'processed', 'merged_train.csv')
         
-        # First try loading from merged dataset, which is preferred
+        if not os.path.exists(merged_path):
+            logger.error(f"Merged dataset not found: {merged_path}")
+            return []
+            
         try:
             merged_df = pd.read_csv(merged_path)
-            # Get unique books with their ratings
             books_df = merged_df.groupby('book_id').agg({
                 'average_rating': 'first',
                 'ratings_count': 'first',
@@ -254,99 +233,36 @@ def get_popular_books(n: int = 10, data_dir: str = 'data', randomize: bool = Fal
                 'authors': 'first'
             }).reset_index()
             logger.info(f"Loaded book data from merged dataset with {len(books_df)} books")
-        except (FileNotFoundError, pd.errors.EmptyDataError):
-            logger.warning(f"Merged dataset not found or empty: {merged_path}")
-            if os.path.exists(books_path):
-                books_df = pd.read_csv(books_path)
-                logger.info(f"Loaded book data from books.csv with {len(books_df)} books")
-            else:
-                raise FileNotFoundError(f"Books file not found: {books_path}")
+        except Exception as e:
+            logger.error(f"Error loading book data: {e}")
+            return []
         
         # Filter for books with at least 4.0 stars average rating
         books_df = books_df[books_df['average_rating'] >= 4.0]
         
         if len(books_df) == 0:
-            logger.warning("No books found with 4.0+ star rating. Returning empty list.")
+            logger.warning("No books found with 4.0+ star rating")
             return []
             
-        # Sort by popularity (combination of ratings count and average rating)
-        # We give more weight to ratings_count but also consider average_rating
-        books_df['popularity_score'] = (
-            books_df['ratings_count'] * (books_df['average_rating'] / 5.0)
-        )
-        
+        # Calculate popularity score and sort
+        books_df['popularity_score'] = books_df['ratings_count'] * (books_df['average_rating'] / 5.0)
         books_df = books_df.sort_values('popularity_score', ascending=False)
         
-        # Get a much larger pool of popular books to select from to increase diversity
+        # Get a pool of popular books
         popular_pool_size = min(n * 20, len(books_df))
         popular_books = books_df.head(popular_pool_size)
         
+        # Handle randomization if requested
         if randomize and len(popular_books) > n:
             # Set random seed if provided
             if seed is not None:
                 np.random.seed(seed)
-            
-            # Create a list of books to potentially exclude for certain users
-            # These are books that might otherwise appear in everyone's recommendations
-            top_books_ids = popular_books.head(5)['book_id'].tolist()
-            
-            # Determine which books to exclude for this specific user
-            # Different users will have different exclusions based on their user_id (seed)
-            if seed is not None:
-                np.random.seed(seed)
-                # Each user will exclude at least 2 of the top 5 books
-                num_to_exclude = np.random.randint(2, 5)
-                exclude_indices = np.random.choice(5, size=num_to_exclude, replace=False)
-                books_to_exclude = [top_books_ids[i] for i in exclude_indices]
-            else:
-                books_to_exclude = []
-            
-            # Filter out the excluded books for this user
-            if books_to_exclude:
-                popular_books = popular_books[~popular_books['book_id'].isin(books_to_exclude)]
-            
-            # Determine if this user should get any top books at all
-            # Use the seed (user_id) to create completely different recommendation patterns
-            # This ensures not all users get the same top books
-            np.random.seed(seed if seed is not None else 42)
-            include_top_books = np.random.random() > 0.4  # 60% chance to include top books
-            
-            if include_top_books:
-                # Only select a very small number of top books deterministically
-                top_count = max(n // 10, 1)  # Reduced from 1/5 to 1/10 of selections
-                top_books = popular_books.head(top_count)
                 
-                # Offset the starting point for remaining books based on seed 
-                # This creates different starting points for different users
-                offset = seed % 15 if seed is not None else 0
-                offset = min(offset * top_count, len(popular_books) - n)
-                
-                # Select remaining books randomly from the pool, starting from the offset
-                remaining_pool = popular_books.iloc[top_count + offset:].sample(
-                    n=min(n - top_count, len(popular_books) - top_count - offset),
-                    random_state=seed
-                )
-                
-                # Combine top books with random selections
-                final_selection = pd.concat([top_books, remaining_pool])
-            else:
-                # Skip top books entirely for some users
-                # This ensures maximum diversity since some users won't get any top books
-                
-                # Apply different offsets for different users to ensure variety
-                offset = (seed % 8) * n if seed is not None else 0
-                offset = min(offset, len(popular_books) - n * 2)
-                
-                # Select books randomly from the pool, but skip the very top books
-                # Start selection from a point in the middle of the rankings
-                final_selection = popular_books.iloc[offset:].sample(
-                    n=min(n, len(popular_books) - offset),
-                    random_state=seed
-                )
-            
-            return final_selection['book_id'].tolist()
+            # Get semi-random selection of books    
+            selected_books = popular_books.sample(n=min(n, len(popular_books)), random_state=seed)
+            return selected_books['book_id'].tolist()
         else:
-            # Non-randomized selection - just return top N books
+            # Non-randomized - just return top N books
             return popular_books['book_id'].head(n).tolist()
     
     except Exception as e:
@@ -357,30 +273,34 @@ def get_popular_books(n: int = 10, data_dir: str = 'data', randomize: bool = Fal
 
 def load_recommender_model(model_type: str = 'collaborative', models_dir: str = None) -> BaseRecommender:
     """
-    Load recommender model from disk
+    Load recommender model from disk with caching
     
-    Args:
-        model_type (str): Type of model to load ('collaborative')
-        models_dir (str): Directory containing the model files (optional)
+    Parameters
+    ----------
+    model_type : str
+        Type of model to load ('collaborative')
+    models_dir : str
+        Directory containing the model files (optional)
         
-    Returns:
-        model: Loaded recommender model
+    Returns
+    -------
+    BaseRecommender
+        Loaded recommender model
     """
-    logger = logging.getLogger('predict_model')
+    # Check model cache first
+    cache_key = f"{model_type}_{models_dir}"
+    if cache_key in _MODEL_CACHE:
+        return _MODEL_CACHE[cache_key]
     
     # Check for environment variable for models directory
     env_models_dir = os.environ.get('BOOK_RECOMMENDER_MODELS_DIR')
     if env_models_dir and models_dir is None:
         models_dir = env_models_dir
-        logger.info(f"Using models directory from environment: {models_dir}")
     
-    # Determine model directory
+    # Determine model directory if not provided
     if models_dir is None:
-        # Try to find the project root - look for src/models directory structure
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up to src directory
         src_dir = os.path.dirname(current_dir)
-        # Go up to project root
         project_root = os.path.dirname(src_dir)
         models_dir = os.path.join(project_root, 'models')
     
@@ -390,39 +310,97 @@ def load_recommender_model(model_type: str = 'collaborative', models_dir: str = 
         # Check if models directory exists
         if not os.path.exists(models_dir):
             logger.error(f"Models directory not found: {models_dir}")
-            os.makedirs(models_dir, exist_ok=True)
-            logger.info(f"Created models directory: {models_dir}")
-            raise FileNotFoundError(f"Models directory not found: {models_dir}")
+            return None
             
-        # Check for model files
+        # Find model files
         model_files = [f for f in os.listdir(models_dir) 
                       if f.startswith(model_type) and f.endswith('.pkl') 
                       and os.path.isfile(os.path.join(models_dir, f))]
         
         if not model_files:
             logger.error(f"No {model_type} model files found in {models_dir}")
-            raise FileNotFoundError(f"No {model_type} model files found in {models_dir}")
+            return None
         
-        # Load the newest model file
-        model_files.sort(reverse=True)  # Sort by name in descending order
+        # Get newest model file
+        model_files.sort(reverse=True)
         model_path = os.path.join(models_dir, model_files[0])
         
+        # Custom unpickler to handle module name changes
+        class ModelUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                if name == 'CollaborativeRecommender':
+                    return CollaborativeRecommender
+                return super().find_class(module, name)
+        
+        # Load the model
         with open(model_path, 'rb') as f:
-            model = pickle.load(f)
+            model = ModelUnpickler(f).load()
             
         logger.info(f"Successfully loaded {model_type} recommender model")
+        _MODEL_CACHE[cache_key] = model
         return model
         
     except Exception as e:
         logger.error(f"Error loading {model_type} recommender model: {str(e)}")
-        # Return None to indicate failure
         return None
+
+
+def map_book_ids(book_ids: List[int], data_dir: str = 'data') -> Tuple[List[int], List[int]]:
+    """
+    Map book IDs to their original IDs, handling both encoded and original IDs.
+    
+    Parameters
+    ----------
+    book_ids : List[int]
+        List of book IDs returned by the model
+    data_dir : str
+        Path to the data directory
+    
+    Returns
+    -------
+    Tuple[List[int], List[int]]
+        Tuple containing:
+        - List of mapped book IDs (with unmapped IDs kept as-is)
+        - List of indices for unmapped book IDs
+    """
+    mapping = load_book_id_mapping(data_dir)
+    
+    if not mapping:
+        logger.warning("No book ID mapping found - using IDs as-is")
+        return book_ids, []
+    
+    # Map IDs and track unmapped indices
+    mapped_ids = []
+    unmapped_indices = []
+    
+    for i, book_id in enumerate(book_ids):
+        original_id = mapping.get(book_id)
+        if original_id is not None:
+            mapped_ids.append(original_id)
+        else:
+            mapped_ids.append(book_id)
+            unmapped_indices.append(i)
+            logger.warning(f"No mapping found for book ID {book_id} - using as-is")
+    
+    mapped_count = len(book_ids) - len(unmapped_indices)
+    if mapped_count > 0:
+        logger.info(f"Mapped {mapped_count} book IDs")
+    
+    return mapped_ids, unmapped_indices
+
+
+def fallback_to_popular_books(user_id: int, n: int, data_dir: str) -> pd.DataFrame:
+    """Fallback function to provide popular books if standard recommendations fail."""
+    logger.info("Falling back to popularity-based recommendations")
+    popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
+    return get_book_metadata(tuple(popular_book_ids), data_dir)
 
 
 def recommend_for_user(user_id: int, model_type: str = 'collaborative', 
                       n: int = 5, data_dir: str = 'data') -> pd.DataFrame:
     """
     Generate book recommendations for a specific user.
+    Simplified version with less redundancy.
 
     Parameters
     ----------
@@ -440,123 +418,84 @@ def recommend_for_user(user_id: int, model_type: str = 'collaborative',
     pandas.DataFrame
         DataFrame with recommendations and metadata
     """
-    # Check for environment variable for data directory
-    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
-    if env_data_dir:
-        data_dir = env_data_dir
+    data_dir = get_data_dir(data_dir)
 
     try:
-        # Load the appropriate model
+        # Load the model
         recommender = load_recommender_model(model_type)
-        
         if recommender is None:
-            logger.error(f"Failed to load {model_type} recommender model")
             return fallback_to_popular_books(user_id, n, data_dir)
 
-        # Fetch more books than needed to ensure diversity (5x instead of 2x)
-        logger.info(f"Getting recommendations for user {user_id} using {model_type} model")
-        fetch_count = n * 5
+        # Get recommendations from model
+        logger.info(f"Getting recommendations for user {user_id}")
+        fetch_count = n * 3  # Get extra recommendations to allow for filtering
         book_ids = recommender.recommend_for_user(user_id, n_recommendations=fetch_count)
 
-        # Handle case where we get no recommendations (cold start or user not in training data)
+        # Handle empty results
         if not book_ids or not isinstance(book_ids, list):
-            logger.warning(f"No recommendations found for user {user_id} using {model_type} model")
+            logger.warning(f"No recommendations found for user {user_id}")
             return fallback_to_popular_books(user_id, n, data_dir)
 
-        # Ensure book IDs are integers
+        # Ensure IDs are integers
         book_ids = [int(b) for b in book_ids if str(b).isdigit()]
 
-        # --- Add Diversity Enhancement ---
-        if len(book_ids) > n:
-            np.random.seed(user_id)  # Seed for consistent variation
-
-            diversity_factor = (user_id % 10) / 10.0  # Between 0.0 and 0.9
-            top_count = max(1, int(n * (1 - diversity_factor)))
-            diversity_count = n - top_count
-
-            top_picks = book_ids[:top_count]  # Main recommendations
-
-            skip_offset = (user_id % 5) * diversity_count
-            start_index = top_count + skip_offset
-            end_index = min(len(book_ids), start_index + diversity_count * 3)
-
-            if end_index - start_index < diversity_count:
-                start_index = top_count
-                end_index = min(len(book_ids), start_index + diversity_count * 3)
-
-            diversity_candidates = book_ids[start_index:end_index]
-            diversity_picks = list(np.random.choice(
-                diversity_candidates, 
-                size=min(diversity_count, len(diversity_candidates)), 
-                replace=False
-            ))
-
-            final_book_ids = list(dict.fromkeys(top_picks + diversity_picks))
-            if len(final_book_ids) < n:
-                additional_picks = [b for b in book_ids if b not in final_book_ids][:n - len(final_book_ids)]
-                final_book_ids.extend(additional_picks)
-
-            book_ids = final_book_ids[:n]
-
-            logger.info(f"Applied diversity enhancement for user {user_id}: top_count={top_count}, diversity_count={diversity_count}")
-
-        # --- Ensure book IDs are mapped correctly ---
-        book_ids = map_book_ids(book_ids, data_dir)
-
-        # --- Get metadata for recommended books ---
-        metadata_df = get_book_metadata(book_ids, data_dir)
-
+        # Process and map the recommended book IDs
+        mapped_book_ids, unmapped_indices = map_book_ids(book_ids, data_dir)
+        
+        # Filter out unmapped IDs if we have enough mapped ones
+        if unmapped_indices and len(mapped_book_ids) > len(unmapped_indices):
+            filtered_book_ids = [mapped_book_ids[i] for i in range(len(mapped_book_ids)) if i not in unmapped_indices]
+            
+            if len(filtered_book_ids) >= n:
+                # Use only properly mapped book IDs
+                mapped_book_ids = filtered_book_ids[:n]
+            else:
+                # Get popular books to fill the gap
+                remaining = n - len(filtered_book_ids)
+                replacement_ids = get_popular_books(remaining * 2, data_dir, randomize=True, seed=user_id)
+                replacement_ids = [b for b in replacement_ids if b not in filtered_book_ids][:remaining]
+                mapped_book_ids = filtered_book_ids + replacement_ids
+        
+        # Ensure we have no more than n books
+        mapped_book_ids = mapped_book_ids[:n]
+        
+        # Get metadata for recommendations
+        metadata_df = get_book_metadata(tuple(mapped_book_ids), data_dir)
+        
+        # Handle missing metadata
+        if len(metadata_df) < n:
+            found_ids = metadata_df['book_id'].tolist() if not metadata_df.empty else []
+            remaining = n - len(found_ids)
+            
+            if remaining > 0:
+                # Get additional books to fill the gap
+                additional_ids = get_popular_books(remaining * 2, data_dir, randomize=True, seed=user_id + 100)
+                additional_ids = [b for b in additional_ids if b not in found_ids][:remaining]
+                
+                if additional_ids:
+                    additional_df = get_book_metadata(tuple(additional_ids), data_dir)
+                    if not additional_df.empty:
+                        metadata_df = pd.concat([metadata_df, additional_df]) if not metadata_df.empty else additional_df
+                        
+        # Final fallback if we still have no results
         if metadata_df.empty:
-            logger.warning(f"Could not find metadata for {len(book_ids)} books")
             return fallback_to_popular_books(user_id, n, data_dir)
 
-        # Add ranking to the recommendations
-        metadata_df['rank'] = range(1, len(metadata_df) + 1)
-
+        # Add ranking to recommendations
+        metadata_df['rank'] = range(len(metadata_df))
+        
         return metadata_df
 
     except Exception as e:
-        logger.error(f"Error getting recommendations for user {user_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error getting recommendations for user {user_id}: {str(e)}")
         return fallback_to_popular_books(user_id, n, data_dir)
 
 
-def map_book_ids(book_ids: List[int], data_dir: str = 'data') -> List[int]:
-    """
-    Map encoded book IDs to original book IDs.
-
-    Parameters
-    ----------
-    book_ids : List[int]
-        List of book IDs returned by the model.
-    data_dir : str
-        Path to the data directory.
-
-    Returns
-    -------
-    List[int]
-        Mapped book IDs.
-    """
-    mapping = load_book_id_mapping(data_dir)
-    
-    # Map encoded IDs to original IDs
-    mapped_ids = [mapping.get(b, b) for b in book_ids]
-    
-    return mapped_ids
-
-
-def fallback_to_popular_books(user_id: int, n: int, data_dir: str) -> pd.DataFrame:
-    """Fallback function to provide popular books if collaborative filtering fails."""
-    logger.info("Falling back to popularity-based recommendations")
-    popular_book_ids = get_popular_books(n, data_dir, randomize=True, seed=user_id)
-    return get_book_metadata(popular_book_ids, data_dir)
-
-
-
-
 def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
-                          n: int = 5, data_dir: str = 'data', save_results: bool = False) -> pd.DataFrame:
+                          n: int = 5, data_dir: str = 'data') -> pd.DataFrame:
     """
     Generate similar book recommendations for a specific book.
+    Simplified version with streamlined logic.
     
     Parameters
     ----------
@@ -568,116 +507,116 @@ def recommend_similar_books(book_id: int, model_type: str = 'collaborative',
         Number of recommendations to generate
     data_dir : str
         Path to the data directory
-    save_results : bool
-        Whether to save the results to a CSV file
         
     Returns
     -------
     pandas.DataFrame
         DataFrame with similar book metadata
     """
-    # Only support collaborative model
-    if model_type != 'collaborative':
-        logger.warning(f"Model type '{model_type}' not supported. Using collaborative model instead.")
-        model_type = 'collaborative'
-        
-    # Check for environment variable for data directory
-    env_data_dir = os.environ.get('BOOK_RECOMMENDER_DATA_DIR')
-    if env_data_dir:
-        data_dir = env_data_dir
+    data_dir = get_data_dir(data_dir)
     
-    # Load the recommender model
-    model = load_recommender_model(model_type=model_type)
+    # Load the model
+    model = load_recommender_model(model_type)
     if model is None:
-        logger.error(f"Failed to load {model_type} recommender model")
+        logger.error(f"Failed to load recommender model")
         return pd.DataFrame()
     
     try:
         # Get similar book recommendations
         logger.info(f"Finding books similar to book ID {book_id}")
         
-        # Set a timeout for this operation to avoid hanging
-        start_time = time.time()
-        max_execution_time = 5  # Maximum 5 seconds for recommendation
+        # Check if book exists in model
+        book_exists = (hasattr(model, 'book_id_to_index') and book_id in model.book_id_to_index) or \
+                     (hasattr(model, 'book_ids') and book_id in model.book_ids)
         
+        if not book_exists:
+            logger.warning(f"Book ID {book_id} not found in model. Using fallback.")
+            fallback_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
+            fallback_ids = [b for b in fallback_ids if b != book_id][:n]
+            return get_book_metadata(tuple(fallback_ids), data_dir)
+        
+        # Get similar books from model
         try:
-            # Call the model with the 'n' parameter
-            similar_book_ids = model.recommend_similar_books(book_id, n=n)
-            
-            # Check if we're taking too long
-            if time.time() - start_time > max_execution_time:
-                logger.warning(f"Similar books recommendation taking too long (>{max_execution_time}s), using fallback")
-                raise TimeoutError("Recommendation operation timed out")
-                
+            fetch_count = n * 3  # Get extra for filtering
+            similar_book_ids = model.recommend_similar_books(book_id, n=fetch_count)
         except Exception as e:
             logger.error(f"Error getting similar books: {e}")
-            similar_book_ids = []
+            fallback_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
+            fallback_ids = [b for b in fallback_ids if b != book_id][:n]
+            return get_book_metadata(tuple(fallback_ids), data_dir)
         
-        # If no similar books found or timeout occurred, provide a fallback 
+        # Handle empty results
         if not similar_book_ids:
-            logger.warning(f"No similar books found for book ID {book_id}, using fallback approach")
+            logger.warning(f"No similar books found for {book_id}")
+            fallback_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
+            fallback_ids = [b for b in fallback_ids if b != book_id][:n]
+            return get_book_metadata(tuple(fallback_ids), data_dir)
             
-            # Get book metadata to understand its genres or categories
-            source_book_df = get_book_metadata([book_id], data_dir=data_dir)
-            
-            if not source_book_df.empty:
-                # Get some popular books as fallback but exclude the current book
-                fallback_book_ids = get_popular_books(n * 2, data_dir, randomize=True, seed=book_id)
-                fallback_book_ids = [b for b in fallback_book_ids if b != book_id][:n]
-                
-                logger.info(f"Using {len(fallback_book_ids)} popular books as fallbacks for similar books")
-                return get_book_metadata(fallback_book_ids, data_dir=data_dir)
-            
-            return pd.DataFrame()
-            
-        # Get metadata for the similar books
-        logger.info(f"Found {len(similar_book_ids)} similar books")
-        similar_books_df = get_book_metadata(similar_book_ids, data_dir=data_dir)
+        # Process book IDs
+        similar_book_ids = [int(b) for b in similar_book_ids if str(b).isdigit()]
         
-        if similar_books_df.empty:
-            logger.warning("Could not retrieve metadata for similar books, using fallback")
-            # Get popular books as fallback
-            fallback_book_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
-            fallback_book_ids = [b for b in fallback_book_ids if b != book_id][:n]
-            return get_book_metadata(fallback_book_ids, data_dir=data_dir)
+        # Map IDs to handle encoded IDs
+        mapped_book_ids, unmapped_indices = map_book_ids(similar_book_ids, data_dir)
+        
+        # Filter out unmapped IDs if possible
+        if unmapped_indices and len(mapped_book_ids) > len(unmapped_indices):
+            filtered_ids = [mapped_book_ids[i] for i in range(len(mapped_book_ids)) if i not in unmapped_indices]
             
-        # Add source book information
-        source_book_df = get_book_metadata([book_id], data_dir=data_dir)
+            if len(filtered_ids) >= n:
+                mapped_book_ids = filtered_ids[:n]
+            else:
+                # Fill the gap with popular books
+                remaining = n - len(filtered_ids)
+                replacement_ids = get_popular_books(remaining * 2, data_dir, randomize=True, seed=book_id)
+                replacement_ids = [b for b in replacement_ids if b not in filtered_ids and b != book_id][:remaining]
+                mapped_book_ids = filtered_ids + replacement_ids
+        
+        # Ensure we have exactly n books
+        mapped_book_ids = mapped_book_ids[:n]
+            
+        # Get metadata
+        similar_books_df = get_book_metadata(tuple(mapped_book_ids), data_dir)
+        
+        # Handle missing metadata
+        if len(similar_books_df) < n:
+            found_ids = similar_books_df['book_id'].tolist() if not similar_books_df.empty else []
+            remaining = n - len(found_ids)
+            
+            if remaining > 0:
+                # Get additional books
+                additional_ids = get_popular_books(remaining * 2, data_dir, randomize=True, seed=book_id + 100)
+                additional_ids = [b for b in additional_ids if b not in found_ids and b != book_id][:remaining]
+                
+                if additional_ids:
+                    additional_df = get_book_metadata(tuple(additional_ids), data_dir)
+                    if not additional_df.empty:
+                        similar_books_df = pd.concat([similar_books_df, additional_df]) if not similar_books_df.empty else additional_df
+        
+        # Final fallback if needed
+        if similar_books_df.empty:
+            fallback_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
+            fallback_ids = [b for b in fallback_ids if b != book_id][:n]
+            return get_book_metadata(tuple(fallback_ids), data_dir)
+            
+        # Add source book info for logging
+        source_book_df = get_book_metadata(tuple([book_id]), data_dir)
         if not source_book_df.empty:
             logger.info(f"Source book: {source_book_df.iloc[0]['title']} by {source_book_df.iloc[0]['authors']}")
         
-        if save_results:
-            output_dir = os.path.join(data_dir, 'processed')
-            os.makedirs(output_dir, exist_ok=True)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            similar_books_file = os.path.join(output_dir, f'similar_books_{book_id}_{timestamp}.csv')
-            similar_books_df.to_csv(similar_books_file, index=False)
-            logger.info(f"Saved similar books to {similar_books_file}")
+        # Add ranking
+        similar_books_df['rank'] = range(len(similar_books_df))
         
         return similar_books_df
         
     except Exception as e:
         logger.error(f"Error generating similar book recommendations: {e}")
-        logger.info("Falling back to popularity-based recommendations")
-        
-        # Return popular books as a fallback, but exclude the current book
-        fallback_book_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
-        # Filter out the source book from recommendations
-        fallback_book_ids = [b for b in fallback_book_ids if b != book_id][:n]
-        return get_book_metadata(fallback_book_ids, data_dir=data_dir)
+        fallback_ids = get_popular_books(n, data_dir, randomize=True, seed=book_id)
+        fallback_ids = [b for b in fallback_ids if b != book_id][:n]
+        return get_book_metadata(tuple(fallback_ids), data_dir)
 
 
 def print_recommendations(recommendations_df: pd.DataFrame, header: str = "Recommendations:"):
-    """
-    Print formatted recommendations with book titles and authors.
-    
-    Parameters
-    ----------
-    recommendations_df : pandas.DataFrame
-        DataFrame with book metadata
-    header : str
-        Header text to display before recommendations
-    """
+    """Print formatted recommendations with book titles and authors."""
     if recommendations_df.empty:
         print("No recommendations found.")
         return
@@ -686,30 +625,14 @@ def print_recommendations(recommendations_df: pd.DataFrame, header: str = "Recom
     print("-" * 80)
     
     for i, row in recommendations_df.iterrows():
-        rank = row.get('rank', i)
-        if rank == -1:
-            print(f"Source Book: {row['title']} by {row['authors']}")
-            print("-" * 80)
-        else:
-            print(f"{rank + 1}. {row['title']} by {row['authors']}")
+        rank = row.get('rank', i) + 1  # Display rank as 1-based
+        print(f"{rank}. {row['title']} by {row['authors']}")
     
     print("-" * 80)
 
 
 def main(args: Optional[List[str]] = None) -> int:
-    """
-    Main function to run the predict module from command line arguments.
-    
-    Parameters
-    ----------
-    args : Optional[List[str]]
-        Command line arguments
-        
-    Returns
-    -------
-    int
-        Exit code
-    """
+    """Main function to run the predict module from command line arguments."""
     parser = argparse.ArgumentParser(description='Generate book recommendations')
     
     # Define command line arguments
@@ -731,59 +654,46 @@ def main(args: Optional[List[str]] = None) -> int:
     parsed_args = parser.parse_args(args)
     
     try:
-        # Set the model directory
-        model_dir = parsed_args.model_dir
-        
-        # If no arguments were provided, run a demo of collaborative filtering
+        # Run the demo if requested or no args provided
         if len(sys.argv) == 1 or parsed_args.demo:
             logger.info("Running demonstration of collaborative filtering recommendations")
             
-            # Load the processed data to get a valid user ID
             try:
-                df = pd.read_csv(os.path.join(parsed_args.data_dir, 'processed', 'merged_train.csv'), encoding='utf-8')
-                # Get a random user ID from the data
-                user_ids = df['user_id'].unique()
-                user_id = np.random.choice(user_ids)
-                logger.info(f"Selected random user ID: {user_id} for demonstration")
+                # Get a random user and book for the demo
+                df = pd.read_csv(os.path.join(parsed_args.data_dir, 'processed', 'merged_train.csv'))
+                user_id = np.random.choice(df['user_id'].unique())
+                book_id = np.random.choice(df['book_id'].unique())
                 
-                # Demo collaborative filtering
-                logger.info("Collaborative Filtering Recommendations:")
+                # Demo user recommendations
+                logger.info(f"Selected random user ID: {user_id} for demonstration")
                 recommendations_df = recommend_for_user(
                     user_id=user_id,
-                    model_type='collaborative',
                     n=parsed_args.num,
                     data_dir=parsed_args.data_dir
                 )
-                print_recommendations(recommendations_df, f"Collaborative Filtering Recommendations for User {user_id}:")
+                print_recommendations(recommendations_df, f"Recommendations for User {user_id}:")
                 
-                # Get a random book ID to demonstrate similar books
-                book_ids = df['book_id'].unique()
-                book_id = np.random.choice(book_ids)
+                # Demo similar books
                 logger.info(f"Selected random book ID: {book_id} for similar books demonstration")
-                
-                # Demo collaborative similar books
-                logger.info("Finding similar books using Collaborative Filtering:")
                 similar_books_df = recommend_similar_books(
                     book_id=book_id,
-                    model_type='collaborative',
                     n=parsed_args.num,
-                    data_dir=parsed_args.data_dir,
-                    save_results=False
+                    data_dir=parsed_args.data_dir
                 )
-                print_recommendations(similar_books_df, f"Similar Books to Book ID {book_id} (Collaborative):")
+                print_recommendations(similar_books_df, f"Similar Books to Book ID {book_id}:")
                 
                 return 0
             
             except Exception as e:
                 logger.error(f"Error running demo: {e}")
                 logger.debug(traceback.format_exc())
+                return 1
         
         # Handle user recommendations
         if parsed_args.user is not None:
             user_id = parsed_args.user
-            logger.info(f"Generating recommendations for user {user_id} using {parsed_args.model_type} model")
+            logger.info(f"Generating recommendations for user {user_id}")
             
-            # Generate recommendations
             recommendations_df = recommend_for_user(
                 user_id=user_id,
                 model_type=parsed_args.model_type,
@@ -791,28 +701,22 @@ def main(args: Optional[List[str]] = None) -> int:
                 data_dir=parsed_args.data_dir
             )
             
-            # Print recommendations
             print_recommendations(recommendations_df, f"Book Recommendations for User {user_id}:")
-            
             return 0
             
         # Handle similar book recommendations
         elif parsed_args.book is not None:
             book_id = parsed_args.book
-            logger.info(f"Finding similar books for book {book_id} using {parsed_args.model_type} model")
+            logger.info(f"Finding similar books for book {book_id}")
             
-            # Find similar books
             similar_books_df = recommend_similar_books(
                 book_id=book_id,
                 model_type=parsed_args.model_type,
                 n=parsed_args.num,
-                data_dir=parsed_args.data_dir,
-                save_results=False
+                data_dir=parsed_args.data_dir
             )
             
-            # Print similar books
             print_recommendations(similar_books_df, f"Similar Books to Book ID {book_id}:")
-            
             return 0
             
         else:

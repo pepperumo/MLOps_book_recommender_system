@@ -51,24 +51,6 @@ if [ ! -f "$MODEL_PATH" ]; then
 </body>
 </html>
 EOL
-else
-    # Fix pickle serialization issue if model exists
-    echo "🔧 Fixing model serialization issues..."
-    python -c "
-import pickle
-import sys
-from src.models.train_model import CollaborativeRecommender
-
-try:
-    with open('$MODEL_PATH', 'rb') as f:
-        model = pickle.load(f)
-    with open('$MODEL_PATH', 'wb') as f:
-        pickle.dump(model, f)
-    print('✅ Successfully fixed model pickle compatibility')
-except Exception as e:
-    print(f'❌ Error fixing model: {e}')
-    # Continue even if there's an error
-"
 fi
 
 # Check for frontend build files
