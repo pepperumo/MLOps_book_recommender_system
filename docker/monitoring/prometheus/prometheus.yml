@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['prometheus:9090']
+
+  # Book recommender API metrics - adjusted for FastAPI
+  - job_name: 'book-recommender-api'
+    metrics_path: /metrics
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:8000']  # Updated to your actual FastAPI port 
+
+  # Pushgateway for batch jobs
+  - job_name: 'pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']

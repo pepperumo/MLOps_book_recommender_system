@@ -1,2 +1,0 @@
-user_item_matrix_shape,book_feature_matrix_shape,book_similarity_matrix_shape,num_users,num_books,num_features,min_df,max_df,timestamp
-"(1963, 498)","(498, 218)","(498, 498)",1963,498,218,5,0.8,20250312_064004

@@ -176,3 +176,53 @@ You can access the API at http://localhost:8000 once it's running.
 The system uses a custom unpickler to ensure model compatibility between different environments. This resolves class definition differences when loading models in Docker containers.
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+
+
+## Setting Up DVC for DAGsHub Authentication
+
+This repository uses DVC to manage data and models with remote storage on DAGsHub.
+To authenticate and enable seamless DVC operations, follow these steps:
+
+### 1️⃣ Install DVC (if not installed)
+
+```bash
+pip install dvc
+```
+
+### 2️⃣ Set Up DAGsHub Authentication
+
+Generate a personal access token from DAGsHub Settings,
+then configure DVC authentication locally:
+
+```bash
+dvc remote modify origin --local auth basic
+dvc remote modify origin --local user <your-dagshub-username>
+dvc remote modify origin --local password <your-dagshub-token>
+```
+
+⚠️ **Important**: This stores your credentials locally in `.dvc/config.local`, which is ignored by Git.
+
+### 3️⃣ Verify Your Config
+
+Ensure that `.dvc/config.local` was created by running:
+
+```bash
+cat .dvc/config.local
+```
+
+### 4️⃣ Pull or Push Data
+
+Now, you can pull or push data without manually entering credentials:
+
+```bash
+dvc pull
+dvc push
+```
+
+### 🎯 Summary:
+
+- Do NOT share `.dvc/config.local`
+- Ensure new users configure their own `.dvc/config.local`
+- Provide setup instructions in your README
+
+This ensures security while making it easy for contributors to get started.

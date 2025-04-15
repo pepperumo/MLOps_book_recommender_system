@@ -1,0 +1,143 @@
+flowchart TD
+    %% Professional MLOps Pipeline Flowchart with Rounded Boxes and Icons
+    %% Book Recommender System
+
+    %% Define the main phases with more rounded boxes and professional styling
+    subgraph Phase1["fa:fa-wrench ENVIRONMENT SETUP"]
+        direction TB
+        DockerEnv["fab:fa-docker Docker Infrastructure"]
+        Requirements["fa:fa-box-open Dependency Management"]
+        Config["fa:fa-cogs System Configuration"]
+        
+        DockerEnv --> Requirements --> Config
+    end
+    
+    subgraph Phase2["fa:fa-database DATA MANAGEMENT"]
+        direction LR
+        DataRetrieval["fa:fa-cloud-download-alt Data Acquisition"]
+        ImportData["fa:fa-exchange-alt Data Transformation"]
+        ProcessData["fa:fa-check-circle Data Validation"]
+        DataIngestion["fa:fa-save Data Persistence"]
+        
+        DataRetrieval --> ImportData --> ProcessData --> DataIngestion
+    end
+    
+    subgraph Phase3["fa:fa-brain MODEL TRAINING"]
+        direction TB
+        FeatureEngineering["fa:fa-flask Feature Engineering"]
+        ModelTraining["fa:fa-robot Model Development"]
+        MLflowTracking["fa:fa-mountain MLflow Tracking"]
+        ModelEvaluation["fa:fa-chart-bar Performance Evaluation"]
+        
+        FeatureEngineering --> ModelTraining
+        ModelTraining --> MLflowTracking & ModelEvaluation
+    end
+    
+    subgraph Phase4["fa:fa-cog AUTOMATION"]
+        direction LR
+        DVCPipeline["fa:fa-sitemap DVC Pipeline"]
+        FullPipeline["fa:fa-bolt Workflow Orchestration"]
+        GitHubActions["fab:fa-github-alt GitHub Actions CI"]
+        
+        DVCPipeline --> FullPipeline --> GitHubActions
+    end
+    
+    subgraph Phase5["fa:fa-tachometer-alt MONITORING"]
+        direction TB
+        LoggingSystem["fa:fa-file-alt Logging System"]
+        DAGsHubTracking["fa:fa-project-diagram DAGsHub Dashboard"]
+        MetricsCollection["fa:fa-ruler Metrics Collection"]
+        Prometheus["fa:fa-fire Prometheus"]
+        Grafana["fa:fa-chart-pie Grafana Dashboards"]
+        
+        LoggingSystem --> DAGsHubTracking --> MetricsCollection
+        MetricsCollection --> Prometheus --> Grafana
+    end
+    
+    subgraph Phase6["fa:fa-rocket DEPLOYMENT"]
+        direction LR
+        ModelAPI["fa:fa-globe API Services"]
+        PredictionDockerImage["fab:fa-docker Docker Containers"]
+        FlaskApp["fa:fa-flask Flask Web App"]
+        StreamlitApp["fa:fa-desktop Streamlit UI"]
+        
+        ModelAPI --> PredictionDockerImage --> FlaskApp & StreamlitApp
+    end
+    
+    subgraph Phase7["fa:fa-sync RETRAINING"]
+        direction TB
+        PredictModel["fa:fa-magic Prediction Engine"]
+        RetriggerTraining["fa:fa-redo Continuous Learning"]
+        ModelVersioning["fa:fa-code-branch Version Management"]
+        GitHub["fab:fa-github GitHub Repository"]
+        
+        PredictModel --> RetriggerTraining --> ModelVersioning --> GitHub
+    end
+    
+    %% Main flow with simplified connections
+    Phase1 ==> Phase2 ==> Phase3 ==> Phase4 ==> Phase5 ==> Phase6
+    Phase6 ==> Phase7
+    Phase7 -.-> |"fa:fa-reply-all Feedback Loop"| Phase2
+    
+    %% Simplified data flow connections with clearer labels
+    DataIngestion --> FeatureEngineering
+    ModelEvaluation --> MetricsCollection
+    ModelTraining --> ModelAPI
+    ModelVersioning --> PredictionDockerImage
+    
+    %% Professional style definitions with very rounded corners and enhanced typography
+    classDef phaseStyle fill:#fafafa,stroke:#333,stroke-width:2px,color:#333,font-weight:bold,font-size:14px,font-family:Arial,text-transform:uppercase,border-radius:15px
+    
+    classDef setupStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#0d47a1,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef dataStyle fill:#e0f7fa,stroke:#0097a7,stroke-width:2px,color:#006064,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef modelStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef automationStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef monitorStyle fill:#f9fbe7,stroke:#689f38,stroke-width:2px,color:#33691e,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef deployStyle fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#b71c1c,font-weight:bold,font-family:Arial,border-radius:12px
+    classDef retrainStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#880e4f,font-weight:bold,font-family:Arial,border-radius:12px
+    
+    %% Apply professional styles
+    class Phase1,Phase2,Phase3,Phase4,Phase5,Phase6,Phase7 phaseStyle
+    
+    class DockerEnv,Requirements,Config setupStyle
+    class DataRetrieval,ImportData,ProcessData,DataIngestion dataStyle
+    class FeatureEngineering,ModelTraining,MLflowTracking,ModelEvaluation modelStyle
+    class DVCPipeline,FullPipeline,GitHubActions automationStyle
+    class LoggingSystem,DAGsHubTracking,MetricsCollection,Prometheus,Grafana monitorStyle
+    class ModelAPI,PredictionDockerImage,FlaskApp,StreamlitApp deployStyle
+    class PredictModel,RetriggerTraining,ModelVersioning,GitHub retrainStyle
+    
+    %% Enhanced connection styling with better contrast
+    linkStyle default stroke:#555,stroke-width:2px
+    linkStyle 6,7,8,9,10,11,12 stroke:#666,stroke-width:1.8px
+    
+    %% Individual node styling for key components with more rounded corners
+    style Phase1 fill:#6200EA,color:#FFFFFF,stroke:#6200EA,stroke-width:3px,border-radius:20px
+    style Phase2 fill:#00B8D4,color:#FFFFFF,stroke:#00B8D4,stroke-width:3px,border-radius:20px
+    style Phase3 fill:#FF6D00,color:#FFFFFF,stroke:#FF6D00,stroke-width:3px,border-radius:20px
+    style Phase4 fill:#AA00FF,color:#FFFFFF,stroke:#AA00FF,stroke-width:3px,border-radius:20px
+    style Phase5 fill:#00C853,color:#FFFFFF,stroke:#00C853,stroke-width:3px,border-radius:20px
+    style Phase6 fill:#D50000,color:#FFFFFF,stroke:#D50000,stroke-width:3px,border-radius:20px
+    style Phase7 fill:#C51162,color:#FFFFFF,stroke:#C51162,stroke-width:3px,border-radius:20px
+    
+    %% Key technology nodes with brand colors
+    style DockerEnv fill:#2496ED,color:#FFFFFF,stroke:#2496ED,stroke-width:2px,border-radius:15px
+    style PredictionDockerImage fill:#2496ED,color:#FFFFFF,stroke:#2496ED,stroke-width:2px,border-radius:15px
+    
+    style MLflowTracking fill:#0194E2,color:#FFFFFF,stroke:#0194E2,stroke-width:2px,border-radius:15px
+    style DAGsHubTracking fill:#FF6F00,color:#FFFFFF,stroke:#FF6F00,stroke-width:2px,border-radius:15px
+    
+    style Prometheus fill:#E6522C,color:#FFFFFF,stroke:#E6522C,stroke-width:2px,border-radius:15px
+    style Grafana fill:#F46800,color:#FFFFFF,stroke:#F46800,stroke-width:2px,border-radius:15px
+    
+    style FlaskApp fill:#000000,color:#FFFFFF,stroke:#000000,stroke-width:2px,border-radius:15px
+    style StreamlitApp fill:#FF4B4B,color:#FFFFFF,stroke:#FF4B4B,stroke-width:2px,border-radius:15px
+    
+    style DVCPipeline fill:#945DD6,color:#FFFFFF,stroke:#945DD6,stroke-width:2px,border-radius:15px
+    style GitHubActions fill:#2088FF,color:#FFFFFF,stroke:#2088FF,stroke-width:2px,border-radius:15px
+    style GitHub fill:#161614,color:#FFFFFF,stroke:#161614,stroke-width:2px,border-radius:15px
+    
+    style ModelTraining fill:#FF9100,color:#FFFFFF,stroke:#FF9100,stroke-width:2px,font-weight:bold,border-radius:15px
+    style FeatureEngineering fill:#FF9100,color:#FFFFFF,stroke:#FF9100,stroke-width:2px,font-weight:bold,border-radius:15px
+    style ModelVersioning fill:#C51162,color:#FFFFFF,stroke:#C51162,stroke-width:2px,font-weight:bold,border-radius:15px
+    style DataIngestion fill:#00BCD4,color:#FFFFFF,stroke:#00BCD4,stroke-width:2px,font-weight:bold,border-radius:15px

@@ -1,26 +1,30 @@
 #!/bin/bash
 set -e
 
-echo "Starting data retrieval process..."
+echo "🚀 Starting data retrieval process..."
 
-# Make sure the log directory exists
-mkdir -p logs
+# Ensure directories exist
+mkdir -p /app/logs /app/data/raw
 
-# Make sure the raw data directory exists
-mkdir -p data/raw
+# Delete retrieval_complete if exists (fresh start)
+if [ -f "/app/data/raw/retrieval_complete" ]; then
+    echo "🧹 Removing old retrieval_complete file..."
+    rm /app/data/raw/retrieval_complete
+fi
 
-# Run the data retrieval process
-echo "Retrieving raw book data from Hardcover API..."
-python -m src.data.retrieve_raw_data data/raw
+# Optionally clear previous data if you want to ensure freshness (careful!)
+# rm -rf /app/data/raw/*
 
-echo "Data retrieval completed successfully."
+# Run your data retrieval script
+echo "📥 Retrieving raw book data from Hardcover API..."
+python -m src.data.retrieve_raw_data
 
-# Create a health check file to signal completion
+# Confirm retrieval is complete and fully successful
 touch /app/data/raw/retrieval_complete
-echo "Created health check file to signal completion"
+echo "✅ Data retrieval completed. retrieval_complete file created."
 
-# Keep container running if requested
+# Keep the container running if requested
 if [ "$1" = "keep-alive" ]; then
-    echo "Container will remain running for debugging purposes."
+    echo "🐞 Container will remain running for debugging."
     tail -f /dev/null
 fi

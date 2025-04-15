@@ -1,0 +1,36 @@
+# Collaborative Filtering Model Parameters
+collaborative:
+  # Core hyperparameters
+  n_neighbors: 20
+  max_rated_items: 50
+  
+  # Algorithm parameters
+  similarity_metric: cosine
+  algorithm: brute
+  n_jobs: -1  # Use all available cores
+  
+  # Training parameters
+  train_test_split: 0.2
+  random_state: 42
+  
+  # Evaluation parameters
+  k_values: [5, 10, 20]
+  eval_sample_size: 50
+
+# Data parameters
+data:
+  features_dir: data/features
+  output_dir: models
+
+# You can add new model configurations here for experimentation
+# For example:
+# collaborative_v2:
+#   n_neighbors: 30
+#   max_rated_items: 100
+#   similarity_metric: euclidean
+#   algorithm: kd_tree
+#   n_jobs: -1
+#   train_test_split: 0.2
+#   random_state: 42
+#   k_values: [5, 10, 20]
+#   eval_sample_size: 50

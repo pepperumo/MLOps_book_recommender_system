@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # Prometheus: Time series database for metrics collection and storage
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+      - app_network  # Changed from app-network to app_network to match local.yml
+
+  # Grafana: Dashboard and visualization tool
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./docker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards  
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_BASIC_ENABLED=true
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring-network
+      - app_network  # Changed from app-network to app_network
+
+  # Pushgateway: Allows pushing metrics from batch jobs like model training
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: pushgateway
+    ports:
+      - "9091:9091"
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+      - app_network  # Changed from app-network to app_network
+
+networks:
+  monitoring-network:
+    driver: bridge
+  app_network:  # Changed from app-network to app_network
+    external: true
+    # Modified name to match Docker's auto-generated network name format
+    name: mlops_book_recommender_system_app_network  # Docker prefixes with project name
+
+volumes:
+  prometheus-data:
+  grafana-data:

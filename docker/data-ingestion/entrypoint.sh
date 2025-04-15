@@ -1,40 +1,51 @@
 #!/bin/bash
 set -e
 
-echo "Starting data ingestion process..."
+echo "🚀 Starting data ingestion process..."
 
-# Make sure the log directory exists
-mkdir -p logs
+# Ensure directories exist
+mkdir -p /app/logs /app/data/processed /app/data/features
 
-# Make sure the processed data directory exists
-mkdir -p data/processed
-
-# Set the Python path
+# Set Python path explicitly
 export PYTHONPATH=/app:$PYTHONPATH
 
-# Wait for the data retrieval to complete
-echo "Waiting for raw data to be available..."
+# Remove old ingestion_complete file (if exists)
+if [ -f /app/data/ingestion_complete ]; then
+    echo "🧹 Removing stale ingestion completion flag..."
+    rm /app/data/ingestion_complete
+fi
+
+# Wait until data retrieval is complete
+echo "⏳ Waiting for raw data retrieval to finish..."
 while [ ! -f /app/data/raw/retrieval_complete ]; do
+    echo "⏳ Raw data not ready yet, retrying in 5 seconds..."
     sleep 5
 done
-echo "Raw data is available. Starting data processing."
+echo "✅ Raw data is now available."
 
-# Run the dataset creation process
-echo "Processing raw data and creating processed datasets..."
-python -m src.data.process_data data/raw data/processed
+# Run data processing
+echo "⚙️ Processing raw data and creating processed datasets..."
+python -m src.data.process_data
 
-# Build features from processed data
-echo "Building feature matrices for recommendation models..."
+# Run feature building
+echo "🔨 Building feature matrices for recommendation models..."
 python -m src.features.build_features
 
-echo "Data ingestion completed successfully."
+echo "✅ Data ingestion and feature engineering completed successfully."
 
-# Create a health check file to signal completion
-touch /app/data/ingestion_complete
-echo "Created health check file to signal completion"
+# Signal healthcheck completion explicitly:
+HEALTHCHECK_FILE="/app/data/ingestion_complete"
 
-# Keep container running if requested
+# Remove any stale ingestion_complete (to ensure correctness)
+if [ -f "${HEALTHCHECK_FILE}" ]; then
+    rm "${HEALTHCHECK_FILE}"
+fi
+
+touch "${HEALTHCHECK_FILE}"
+echo "🎯 Health check file (${HEALTHCHECK_FILE}) created."
+
+# Keep container alive if debugging
 if [ "$1" = "keep-alive" ]; then
-    echo "Container will remain running for debugging purposes."
+    echo "🐞 Container remains running for debugging purposes."
     tail -f /dev/null
 fi
