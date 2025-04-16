@@ -39,6 +39,8 @@ COPY setup.py .
 # Create directories for model, data, and logs
 RUN mkdir -p /app/models /app/data/processed /app/logs
 
+
+
 # Copy the built frontend from the first stage
 COPY --from=frontend-build /app/build /usr/share/nginx/html
 
