@@ -1,0 +1,148 @@
+services:
+  # Airflow Webserver - The web UI
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+      args:
+        - AIRFLOW_VERSION=2.7.3
+        - PYTHON_VERSION=3.9
+      no_cache: true
+    image: mlops-book-recommender/airflow:webserver
+    container_name: airflow-webserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/logs:/opt/airflow/logs
+      - ./src:/opt/airflow/src
+      - ./models:/opt/airflow/models
+      - ./data:/opt/airflow/data
+      - ./config:/opt/airflow/config
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__WEBSERVER__SECRET_KEY=supersecretkey
+      - PYTHONPATH=/opt/airflow
+      - PROMETHEUS_PUSHGATEWAY=pushgateway:9091
+    command: webserver
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      - airflow-postgres
+    networks:
+      - airflow-network
+      - app_network
+      - monitoring-network
+    env_file:
+      - ./.env
+
+  # Airflow Scheduler - The scheduler
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+      args:
+        - AIRFLOW_VERSION=2.7.3
+        - PYTHON_VERSION=3.9
+      no_cache: true
+    image: mlops-book-recommender/airflow:scheduler
+    container_name: airflow-scheduler
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/logs:/opt/airflow/logs
+      - ./src:/opt/airflow/src
+      - ./models:/opt/airflow/models
+      - ./data:/opt/airflow/data
+      - ./config:/opt/airflow/config
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - PYTHONPATH=/opt/airflow
+      - PROMETHEUS_PUSHGATEWAY=pushgateway:9091
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      - airflow-postgres
+    networks:
+      - airflow-network
+      - app_network
+      - monitoring-network
+    env_file:
+      - ./.env
+
+  # Airflow PostgreSQL - The metadata database
+  airflow-postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+    networks:
+      - airflow-network
+
+  # Airflow Init - Initialize the Airflow database
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+      args:
+        - AIRFLOW_VERSION=2.7.3
+        - PYTHON_VERSION=3.9
+      no_cache: true
+    image: mlops-book-recommender/airflow:init
+    container_name: airflow-init
+    depends_on:
+      - airflow-postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    networks:
+      - airflow-network
+    env_file:
+      - ./.env
+
+networks:
+  airflow-network:
+    driver: bridge
+  app_network:
+    external: true
+    name: mlops_book_recommender_system_app_network
+  monitoring-network:
+    external: true
+    name: mlops_book_recommender_system_monitoring-network
+
+volumes:
+  airflow-postgres-data:
