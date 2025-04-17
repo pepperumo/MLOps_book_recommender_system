@@ -10,6 +10,10 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List
 import numpy as np
+from dotenv import load_dotenv, find_dotenv
+
+# Load environment variables from .env file
+load_dotenv(find_dotenv())
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +34,23 @@ def setup_mlflow(repo_owner='pepperumo', repo_name='MLOps_book_recommender_syste
         True if setup was successful, False otherwise
     """
     try:
-        import dagshub
-        dagshub.init(repo_owner=repo_owner, repo_name=repo_name, mlflow=True)
-        logger.info(f"MLflow tracking configured with DAGsHub for {repo_owner}/{repo_name}")
-        return True
+        # Check if credentials are already in environment variables
+        mlflow_uri = os.getenv('MLFLOW_TRACKING_URI')
+        mlflow_username = os.getenv('MLFLOW_TRACKING_USERNAME')
+        mlflow_password = os.getenv('MLFLOW_TRACKING_PASSWORD')
+        
+        if mlflow_uri and mlflow_username and mlflow_password:
+            # Environment variables are set, use them directly
+            logger.info(f"Using MLflow tracking URI from environment: {mlflow_uri}")
+            mlflow.set_tracking_uri(mlflow_uri)
+            # No need to call dagshub.init() as credentials are already set
+            return True
+        else:
+            # Fall back to dagshub.init() method
+            import dagshub
+            dagshub.init(repo_owner=repo_owner, repo_name=repo_name, mlflow=True)
+            logger.info(f"MLflow tracking configured with DAGsHub for {repo_owner}/{repo_name}")
+            return True
     except Exception as e:
         logger.warning(f"Could not set up MLflow tracking: {e}")
         return False

@@ -1,6 +1,6 @@
 [core]
     remote = origin
-    autostage = true
+    
 ['remote "dagshub"']
     url = https://dagshub.com/pepperumo/MLOps_book_recommender_system.dvc
 ['remote "origin"']
