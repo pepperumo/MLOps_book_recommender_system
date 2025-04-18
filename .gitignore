@@ -43,6 +43,7 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
+.pytest_cache/
 
 # Translations
 *.mo
@@ -107,6 +108,8 @@ mlruns/
 
 # Logs
 logs/
+**/logs/
+*.log
 
 # Flask
 node_modules/
