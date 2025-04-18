@@ -62,6 +62,39 @@ with DAG(
         bash_command='cd /opt/airflow && python -m src.models.train_model --config config/model_params.yaml',
     )
 
+    # ----- API Test Tasks (run in parallel after training) -----
+    start_api = BashOperator(
+        task_id='start_api',
+        bash_command="""
+        cd /opt/airflow
+        # Launch Uvicorn in background
+        nohup python -m uvicorn src.fastAPI.api:app --host 0.0.0.0 --port 7860 \
+          > /tmp/uvicorn.log 2>&1 &
+        sleep 3  # allow server to initialize
+        echo "Uvicorn logs:\n" && head -n 20 /tmp/uvicorn.log
+        """,
+    )
+    wait_api = BashOperator(
+        task_id='wait_for_api',
+        bash_command="""
+        until curl -sSf http://127.0.0.1:7860/health; do sleep 2; done
+        """,
+    )
+    run_api_tests = BashOperator(
+        task_id='run_api_tests',
+        bash_command="""
+        export API_URL=http://127.0.0.1:7860
+        export USE_API_PREFIX=true
+        echo "Running API pytest suite against $API_URL (using prefix)"
+        python -m pytest /opt/airflow/src/fastAPI/test_api_pytest.py -vv --maxfail=1
+        """,
+    )
+    stop_api = BashOperator(
+        task_id='stop_api',
+        bash_command="pkill -f 'uvicorn src.fastAPI.api' || true",
+    )
+    # -----------------------------------------------------------
+
     # Task 5: Model Evaluation
     evaluate_model = BashOperator(
         task_id='evaluate_model',
@@ -117,4 +150,9 @@ with DAG(
     )
 
     # Define task dependencies
-    retrieve_data >> process_data >> build_features >> train_model >> evaluate_model >> push_metrics
+    retrieve_data >> process_data >> build_features >> train_model
+    # after training, kick off evaluation and API tests in parallel
+    train_model >> evaluate_model
+    train_model >> start_api >> wait_api >> run_api_tests >> stop_api
+    # both branches converge to push_metrics
+    [evaluate_model, stop_api] >> push_metrics
