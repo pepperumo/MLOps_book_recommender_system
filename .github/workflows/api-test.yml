@@ -40,3 +40,4 @@ jobs:
       run: |
         # Skip health check and specify the API URL explicitly
         API_URL="http://localhost:8000" SKIP_HEALTH_CHECK="true" pytest src/fastAPI/test_api_pytest.py -v
+        pytest src/fastAPI/test_api_pytest.py -v
