@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 # Configure the API URL - this can be changed to test against Docker
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 USE_API_PREFIX = os.environ.get("USE_API_PREFIX", "true").lower() == "true"
-SKIP_HEALTH_CHECK = os.environ.get("SKIP_HEALTH_CHECK", "false").lower() == "true"
 
 def get_endpoint(path: str) -> str:
     """Construct the API endpoint URL with proper prefix handling"""
@@ -41,11 +40,6 @@ def get_endpoint(path: str) -> str:
 @pytest.fixture(scope="session")
 def api_health_check():
     """Check if the API is running before running tests"""
-    # Skip health check if environment variable is set
-    if SKIP_HEALTH_CHECK:
-        logger.info(f"Skipping health check as SKIP_HEALTH_CHECK={SKIP_HEALTH_CHECK}")
-        return True
-        
     health_url = f"{API_URL}/health"
     try:
         response = requests.get(health_url, timeout=5)
