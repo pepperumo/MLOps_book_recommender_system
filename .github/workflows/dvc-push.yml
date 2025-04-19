@@ -1,0 +1,124 @@
+name: DVC Push
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'models/**'
+      - 'data/**'
+      - 'dvc.yaml'
+      - 'dvc.lock'
+  # Allows manual triggering of the workflow
+  workflow_dispatch:
+
+jobs:
+  dvc_push:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history to allow proper git operations
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install DVC dependencies from the requirements file
+        pip install -r docker/dvc/requirements.txt
+        # Install the project package
+        pip install -e .
+
+    - name: Configure Git
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Set up Git credentials for DVC operations
+        git config --global user.name "GitHub Actions Bot"
+        git config --global user.email "actions@github.com"
+        
+        # Configure Git with token for push operations if needed
+        git remote set-url origin "https://${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+        
+        echo "Git configured successfully"
+
+    - name: Configure DVC
+      env:
+        # These secrets must be set in your GitHub repository settings
+        DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+        DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+      run: |
+        # Configure DVC with DAGsHub credentials
+        dvc remote modify origin --local auth basic
+        dvc remote modify origin --local user $DAGSHUB_USERNAME
+        dvc remote modify origin --local password $DAGSHUB_TOKEN
+        
+        echo "DVC remote configured successfully"
+
+    - name: Verify model artifacts
+      run: |
+        # Check if model artifacts exist
+        if [ -f "models/collaborative.pkl" ] && [ -f "models/collaborative_config.json" ]; then
+          echo "✅ Model artifacts detected"
+        else
+          echo "❌ Model artifacts missing"
+          exit 1
+        fi
+
+    - name: Pull DVC artifacts
+      run: |
+        # Pull existing artifacts
+        dvc pull || echo "DVC pull failed or not necessary, continuing..."
+
+    - name: Commit DVC outputs
+      run: |
+        # Commit train_model stage specifically (following Docker container logic)
+        echo "🔄 Committing DVC outputs for stage 'train_model'..."
+        dvc commit train_model -f || echo "No changes to commit for train_model stage"
+        
+        # Also commit any other stages that might have changes
+        for stage in $(dvc stage list | grep -v "train_model"); do
+          dvc commit $stage -f || echo "No changes to commit for stage $stage"
+        done
+
+    - name: Track non-pipeline files
+      run: |
+        # Add any non-pipeline files from /models that are not already in dvc.yaml
+        for file in $(find models -type f -not -path "*/\.*" | grep -v ".dvc"); do
+          if ! grep -q "$file" dvc.yaml && ! grep -q "$(basename $file)" dvc.yaml; then
+            echo "🔄 Adding non-pipeline file to DVC: $file"
+            dvc add "$file" || echo "Could not add $file, it might be managed by a pipeline"
+          else
+            echo "ℹ️ Skipping $file as it's managed by the pipeline"
+          fi
+        done
+
+    - name: Push DVC artifacts
+      run: |
+        # Push all tracked artifacts to DVC remote storage
+        dvc push
+        
+        echo "DVC artifacts pushed successfully!"
+
+    - name: Commit and push DVC metadata
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Add and commit DVC metadata changes
+        git add .dvc/
+        git add '*.dvc'
+        git add dvc.lock
+        
+        # Check if there are changes to commit
+        if ! git diff --staged --quiet; then
+          git commit -m "📅 Update DVC metadata [skip ci]"
+          git push origin HEAD
+          echo "DVC metadata committed and pushed successfully!"
+        else
+          echo "No DVC metadata changes to commit"
+        fi
