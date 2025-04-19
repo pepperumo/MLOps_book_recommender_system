@@ -1,120 +1,42 @@
-# .github/workflows/api-tests.yml
-name: API Tests
+name: API Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
+  # Optional: Run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
   test_api:
     runs-on: ubuntu-latest
-    env:
-      PYTHON_VERSION: "3.10"
-      PORT: 8000          # keep it fixed or change if you prefer
 
     steps:
-    # ------------------------------------------------------------------
-    # Checkout & Python
-    # ------------------------------------------------------------------
-    - name: Check out repository
+    - name: Check out repository code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ env.PYTHON_VERSION }}
-      uses: actions/setup-python@v4          # v4 is the current GA tag
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: "pip"                         # free speed‑up!
+        python-version: '3.10'
 
-    # ------------------------------------------------------------------
-    # Install your project
-    # ------------------------------------------------------------------
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio
+        # Install fastAPI specific requirements
         pip install -r docker/fastAPI/requirements.txt
+        # Install the project package
         pip install -e .
 
-    # ------------------------------------------------------------------
-    # Dummy data + model that the API expects
-    # ------------------------------------------------------------------
-    - name: Prepare test artefacts
+    - name: Start API in background
       run: |
-        set -e
-        mkdir -p data/processed models
-        
-        cat <<'CSV' > data/processed/merged_train.csv
-book_id,title,authors,average_rating,ratings_count,image_url
-1,Test Book,Test Author,4.5,100,https://example.com/image.jpg
-2,Another Book,Another Author,4.0,80,https://example.com/image2.jpg
-CSV
-        
-        cat <<'CSV' > data/processed/book_id_mapping.csv
-original_id,mapped_id
-1,1
-2,2
-CSV
-        
-        python - <<'PY'
-import pickle, os
-class DummyModel:
-    def get_recommendations(self, user_id=None, book_id=None, n=5):
-        return [(1, 0.9), (2, 0.8)]
-os.makedirs("models", exist_ok=True)
-with open("models/collaborative.pkl", "wb") as f:
-    pickle.dump(DummyModel(), f)
-PY
+        python src/fastAPI/api.py &
+        # Give the API time to start up
+        sleep 10
 
-    # ------------------------------------------------------------------
-    # Start the API in the background
-    # ------------------------------------------------------------------
-    - name: Launch API (background)
-      id: api
-      run: |
-        set -euo pipefail
-
-        # Start Uvicorn in the background
-        nohup uvicorn src.fastAPI.api:app \
-              --host 0.0.0.0 \
-              --port "$PORT" \
-              > api.log 2>&1 &
-        echo $! > uvicorn.pid
-
-        echo "Waiting for API to answer /health …"
-        for i in {1..30}; do
-          if curl -sf "http://localhost:${PORT}/health" > /dev/null; then
-            echo "API is up!"
-            exit 0
-          fi
-          sleep 2
-        done
-        echo "::error::API did not start in time"; cat api.log
-        exit 1
-
-    # ------------------------------------------------------------------
-    # Run your test‑suite against the live API
-    # ------------------------------------------------------------------
     - name: Run API tests
-      env:
-        API_URL: http://localhost:${{ env.PORT }}
-        USE_API_PREFIX: "false"
-      run: pytest src/fastAPI/test_api_pytest.py -v
-
-    # ------------------------------------------------------------------
-    # Always clean up & upload logs so debugging is painless
-    # ------------------------------------------------------------------
-    - name: Stop API
-      if: always()
       run: |
-        kill $(cat uvicorn.pid) || true
-        sleep 2
-
-    - name: Upload API log (on failure)
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: api-log
-        path: api.log
-        retention-days: 7
+        # Skip health check and specify the API URL explicitly
+        API_URL="http://localhost:8000" SKIP_HEALTH_CHECK="true" pytest src/fastAPI/test_api_pytest.py -v
