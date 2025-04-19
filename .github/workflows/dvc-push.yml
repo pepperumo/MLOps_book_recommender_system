@@ -14,6 +14,8 @@ on:
 jobs:
   dvc_push:
     runs-on: ubuntu-latest
+    # Specify the environment to use
+    environment: DVC
     
     steps:
     - name: Check out repository code
@@ -49,14 +51,18 @@ jobs:
 
     - name: Configure DVC
       env:
-        # These secrets must be set in your GitHub repository settings
+        # These will now come from the DVC environment
         DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
         DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
       run: |
-        # Configure DVC with DAGsHub credentials
-        dvc remote modify origin --local auth basic
-        dvc remote modify origin --local user $DAGSHUB_USERNAME
-        dvc remote modify origin --local password $DAGSHUB_TOKEN
+        # Set DVC remote authentication using proper syntax
+        # First check the structure of the config file
+        cat .dvc/config
+        
+        # Use the correct syntax for S3 endpoint auth
+        dvc remote modify --local origin endpointurl https://dagshub.com/pepperumo/MLOps_book_recommender_system.s3
+        dvc remote modify --local origin access_key_id $DAGSHUB_USERNAME
+        dvc remote modify --local origin secret_access_key $DAGSHUB_TOKEN
         
         echo "DVC remote configured successfully"
 
