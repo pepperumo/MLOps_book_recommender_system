@@ -32,9 +32,32 @@ jobs:
 
     - name: Start API in background
       run: |
-        python src/fastAPI/api.py &
-        # Give the API time to start up
-        sleep 10
+        # Start API with output redirected to log file
+        python src/fastAPI/api.py > api_output.log 2>&1 &
+        API_PID=$!
+        echo "API started with PID: $API_PID"
+        
+        # Wait longer for API to initialize (30 seconds instead of 10)
+        echo "Waiting 30 seconds for API to initialize..."
+        sleep 30
+        
+        # Check if API process is still running
+        if ps -p $API_PID > /dev/null; then
+          echo "API process is running with PID: $API_PID"
+        else
+          echo "API process is not running! Check logs for errors"
+          cat api_output.log
+          exit 1
+        fi
+        
+        # Display API logs
+        echo "API startup logs:"
+        cat api_output.log
+        
+        # Check if API is actually responding
+        echo "Checking if API is responding..."
+        curl -v http://localhost:8000/health || echo "API is not responding to health check"
+        curl -v http://localhost:8000/ || echo "API is not responding to root endpoint"
 
     - name: Run API tests
       run: |
