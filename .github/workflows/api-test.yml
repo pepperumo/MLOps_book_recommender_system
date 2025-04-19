@@ -2,9 +2,9 @@ name: API Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
   # Optional: Run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -24,79 +24,18 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install all required dependencies from requirements.txt
+        pip install pytest pytest-asyncio
+        # Install fastAPI specific requirements
         pip install -r docker/fastAPI/requirements.txt
         # Install the project package
         pip install -e .
 
-    - name: Create data directories
-      run: |
-        mkdir -p data/processed
-        mkdir -p models
-
-    - name: Create dummy data files for API
-      run: |
-        echo 'book_id,title,authors,average_rating,ratings_count,image_url' > data/processed/merged_train.csv
-        echo '1,Test Book,Test Author,4.5,100,https://example.com/image.jpg' >> data/processed/merged_train.csv
-        echo '2,Another Book,Another Author,4.0,80,https://example.com/image2.jpg' >> data/processed/merged_train.csv
-        
-        echo 'original_id,mapped_id' > data/processed/book_id_mapping.csv
-        echo '1,1' >> data/processed/book_id_mapping.csv
-        echo '2,2' >> data/processed/book_id_mapping.csv
-        
-        echo 'Creating dummy model file...'
-        python -c "
-import pickle
-import os
-class DummyModel:
-    def __init__(self):
-        pass
-    def get_recommendations(self, user_id=None, book_id=None, n=5):
-        return [(1, 0.9), (2, 0.8)]
-model = DummyModel()
-os.makedirs('models', exist_ok=True)
-with open('models/collaborative.pkl', 'wb') as f:
-    pickle.dump(model, f)
-        "
-
     - name: Start API in background
       run: |
-        cd $GITHUB_WORKSPACE
-        python -m uvicorn src.fastAPI.api:app --host 0.0.0.0 --port 8000 &
-        echo "Waiting for API to start..."
-        
-        # Wait for the API to be available
-        MAX_RETRIES=30
-        RETRY_COUNT=0
-        API_READY=false
-        
-        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-          if curl -s http://localhost:8000/health > /dev/null; then
-            echo "API is now available!"
-            API_READY=true
-            break
-          fi
-          
-          echo "Waiting for API to become available... ($(($RETRY_COUNT+1))/$MAX_RETRIES)"
-          sleep 2
-          RETRY_COUNT=$((RETRY_COUNT+1))
-        done
-        
-        if [ "$API_READY" != "true" ]; then
-          echo "Failed to connect to API after $MAX_RETRIES attempts"
-          exit 1
-        fi
-
-    - name: Debug API status
-      run: |
-        curl -v http://localhost:8000/health || true
-        ps aux | grep uvicorn || true
-        cat /home/runner/work/MLOps_book_recommender_system/MLOps_book_recommender_system/logs/*.log || true
+        python src/fastAPI/api.py &
+        # Give the API time to start up
+        sleep 10
 
     - name: Run API tests
       run: |
-        cd $GITHUB_WORKSPACE
-        # Set environment variables for the tests
-        export API_URL=http://localhost:8000
-        export USE_API_PREFIX=false
         pytest src/fastAPI/test_api_pytest.py -v
