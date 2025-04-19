@@ -4,10 +4,10 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - 'models/**'
-      - 'data/**'
       - 'dvc.yaml'
       - 'dvc.lock'
+      - '.dvc/config'
+      - '*.dvc'
   # Allows manual triggering of the workflow
   workflow_dispatch:
 
@@ -31,48 +31,32 @@ jobs:
         python -m pip install --upgrade pip
         # Install DVC dependencies from the requirements file
         pip install -r docker/dvc/requirements.txt
-        # Install the project package
-        pip install -e .
 
     - name: Configure Git
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Set up Git credentials for DVC operations
+        # Set up Git credentials
         git config --global user.name "GitHub Actions Bot"
         git config --global user.email "actions@github.com"
-        
-        # Configure Git with token for push operations if needed
-        git remote set-url origin "https://${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-        
         echo "Git configured successfully"
 
-    - name: Configure DVC with DAGsHub
+    - name: Debug DVC configuration
+      run: |
+        # Show DVC version and configuration
+        dvc --version
+        echo "DVC configuration:"
+        cat .dvc/config || echo "No config file found"
+
+    - name: Configure DVC with DAGsHub credentials
       env:
         DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
         DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
       run: |
-        # Create directories for DVC if they don't exist
-        mkdir -p data/raw data/processed data/features data/results models
-        
-        # Verify the current DVC config
-        echo "Current DVC configuration:"
-        cat .dvc/config || echo "No existing config"
-        
-        # Set up DVC authentication with explicit values
-        echo "Configuring DVC with DAGsHub credentials..."
-        
-        # Create a clean .dvc/config with the correct S3 credentials
+        # Ensure DVC config directory exists
         mkdir -p .dvc
-        cat > .dvc/config << EOF
-        [core]
-            remote = origin
-        ['remote "origin"']
-            url = s3://dvc
-            endpointurl = https://dagshub.com/pepperumo/MLOps_book_recommender_system.s3
-        EOF
         
-        # Create a local config for credentials
+        # Create a local config file for credentials
         cat > .dvc/config.local << EOF
         ['remote "origin"']
             access_key_id = ${DAGSHUB_USERNAME}
@@ -82,54 +66,18 @@ jobs:
         # Set proper permissions
         chmod 600 .dvc/config.local
         
-        echo "DVC configuration complete"
-        echo "Checking DVC remote status:"
-        dvc remote list
+        echo "DVC credentials configured in .dvc/config.local"
 
-    - name: Pull DVC data
+    - name: Pull from DVC remote
       run: |
-        echo "Attempting to pull data from DVC remote..."
-        # Pull with verbose logging and force to ensure we get the data
-        dvc pull -v -f || echo "Initial DVC pull failed, continuing with initialization"
-        
-        # If pull fails due to missing data, try initializing the DVC project
-        if [ ! -d "data/raw" ] || [ ! -d "data/features" ]; then
-          echo "Creating required directories for DVC..."
-          mkdir -p data/raw data/processed data/features data/results models
-        fi
+        echo "Attempting to pull from DVC remote..."
+        # Only pull DVC files that are tracked in the repository
+        dvc pull -v || echo "DVC pull failed - this is expected if the files don't exist remotely yet"
 
-    - name: Push DVC updates
+    - name: Push to DVC remote
       run: |
-        # Check if we have any files to add to DVC
-        echo "Checking for new files to add to DVC..."
+        echo "Pushing DVC metadata to remote..."
+        # Push any changes that have been committed to Git
+        dvc push -v || echo "DVC push failed - this may happen if there are no tracked files to push"
         
-        # Try to push what we have (this might succeed if we have partial data)
-        echo "Attempting to push existing DVC data..."
-        dvc push -v || echo "DVC push failed, this is expected if we don't have model artifacts"
-        
-        echo "DVC operations completed. Check the logs for any issues."
-        
-        # If this is the first run without data, inform about next steps
-        if [ ! -f "models/collaborative.pkl" ]; then
-          echo "NOTE: Model artifacts are missing. This is normal if this is the first run."
-          echo "After running your training pipeline, trigger this workflow again to push the artifacts."
-        fi
-
-    - name: Commit any DVC changes
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Add any DVC metadata changes
-        echo "Committing DVC metadata changes if any..."
-        git add .dvc/ || echo "No .dvc directory to add"
-        git add '*.dvc' || echo "No .dvc files to add"
-        git add dvc.lock || echo "No dvc.lock to add"
-        
-        # Only commit if we have changes
-        if ! git diff --staged --quiet; then
-          git commit -m "Update DVC metadata [skip ci]"
-          git push origin HEAD || echo "No changes to push or push failed"
-          echo "DVC metadata committed and pushed."
-        else
-          echo "No DVC metadata changes to commit."
-        fi
+        echo "DVC operations completed."
