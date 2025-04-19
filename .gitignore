@@ -96,6 +96,10 @@ target/
 /results/**
 !/results/**/*.dvc
 
+# Docker files to explicitly include
+!docker/fastAPI/requirements.txt
+!docker/fastAPI/entrypoint.sh
+
 # DVC storage and files
 dvc-storage/
 .dvc/cache/
