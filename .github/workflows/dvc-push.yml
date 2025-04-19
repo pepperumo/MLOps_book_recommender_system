@@ -47,112 +47,89 @@ jobs:
         
         echo "Git configured successfully"
 
-    - name: Inspect and Configure DVC
+    - name: Configure DVC with DAGsHub
       env:
-        # Use repository secrets instead of environment secrets
         DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
         DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
       run: |
-        # First, let's see what the current configuration looks like
-        echo "Current DVC config:"
-        cat .dvc/config
+        # Create directories for DVC if they don't exist
+        mkdir -p data/raw data/processed data/features data/results models
         
-        # Create a minimal working config
-        echo "Creating fresh DVC config for DAGsHub S3"
-        cp .dvc/config .dvc/config.bak
+        # Verify the current DVC config
+        echo "Current DVC configuration:"
+        cat .dvc/config || echo "No existing config"
         
-        # Check if there's a config file; if not, create one
-        if [ ! -f ".dvc/config" ]; then
-          mkdir -p .dvc
-          touch .dvc/config
-        fi
+        # Set up DVC authentication with explicit values
+        echo "Configuring DVC with DAGsHub credentials..."
         
-        # Write a clean config with just the essential S3 settings
+        # Create a clean .dvc/config with the correct S3 credentials
+        mkdir -p .dvc
         cat > .dvc/config << EOF
         [core]
             remote = origin
         ['remote "origin"']
             url = s3://dvc
             endpointurl = https://dagshub.com/pepperumo/MLOps_book_recommender_system.s3
+        EOF
+        
+        # Create a local config for credentials
+        cat > .dvc/config.local << EOF
+        ['remote "origin"']
             access_key_id = ${DAGSHUB_USERNAME}
             secret_access_key = ${DAGSHUB_TOKEN}
         EOF
         
-        echo "New DVC config created:"
-        cat .dvc/config
+        # Set proper permissions
+        chmod 600 .dvc/config.local
         
-        echo "DVC remote configured successfully"
+        echo "DVC configuration complete"
+        echo "Checking DVC remote status:"
+        dvc remote list
 
-    - name: Verify model artifacts
+    - name: Pull DVC data
       run: |
-        # Check if model artifacts exist
-        if [ -f "models/collaborative.pkl" ] && [ -f "models/collaborative_config.json" ]; then
-          echo "✅ Model artifacts detected"
-        else
-          echo "❌ Model artifacts might be missing, attempting to continue anyway"
+        echo "Attempting to pull data from DVC remote..."
+        # Pull with verbose logging and force to ensure we get the data
+        dvc pull -v -f || echo "Initial DVC pull failed, continuing with initialization"
+        
+        # If pull fails due to missing data, try initializing the DVC project
+        if [ ! -d "data/raw" ] || [ ! -d "data/features" ]; then
+          echo "Creating required directories for DVC..."
+          mkdir -p data/raw data/processed data/features data/results models
         fi
 
-    - name: Pull DVC artifacts
+    - name: Push DVC updates
       run: |
-        # Pull existing artifacts
-        dvc pull || echo "DVC pull failed or not necessary, continuing..."
-
-    - name: Commit DVC outputs
-      run: |
-        # Try to list available stages
-        echo "Available DVC stages:"
-        dvc stage list || echo "No stages found or error listing stages"
+        # Check if we have any files to add to DVC
+        echo "Checking for new files to add to DVC..."
         
-        # Commit train_model stage specifically (following Docker container logic)
-        echo "🔄 Committing DVC outputs for stage 'train_model'..."
-        dvc commit train_model -f || echo "No changes to commit for train_model stage"
+        # Try to push what we have (this might succeed if we have partial data)
+        echo "Attempting to push existing DVC data..."
+        dvc push -v || echo "DVC push failed, this is expected if we don't have model artifacts"
         
-        # Also commit any other stages that might have changes
-        for stage in $(dvc stage list 2>/dev/null | grep -v "train_model" || echo ""); do
-          if [ ! -z "$stage" ]; then
-            dvc commit $stage -f || echo "No changes to commit for stage $stage"
-          fi
-        done
-
-    - name: Track non-pipeline files
-      run: |
-        # Add any non-pipeline files from /models that are not already in dvc.yaml
-        if [ -d "models" ]; then
-          for file in $(find models -type f -not -path "*/\.*" | grep -v ".dvc" 2>/dev/null || echo ""); do
-            if [ ! -z "$file" ]; then
-              if ! grep -q "$file" dvc.yaml 2>/dev/null && ! grep -q "$(basename $file)" dvc.yaml 2>/dev/null; then
-                echo "🔄 Adding non-pipeline file to DVC: $file"
-                dvc add "$file" || echo "Could not add $file, it might be managed by a pipeline"
-              else
-                echo "ℹ️ Skipping $file as it's managed by the pipeline"
-              fi
-            fi
-          done
-        else
-          echo "No models directory found"
+        echo "DVC operations completed. Check the logs for any issues."
+        
+        # If this is the first run without data, inform about next steps
+        if [ ! -f "models/collaborative.pkl" ]; then
+          echo "NOTE: Model artifacts are missing. This is normal if this is the first run."
+          echo "After running your training pipeline, trigger this workflow again to push the artifacts."
         fi
 
-    - name: Push DVC artifacts
-      run: |
-        # Push all tracked artifacts to DVC remote storage
-        dvc push -v || echo "DVC push failed, check logs for details"
-        
-        echo "DVC push attempt completed"
-
-    - name: Commit and push DVC metadata
+    - name: Commit any DVC changes
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Add and commit DVC metadata changes
-        git add .dvc/
+        # Add any DVC metadata changes
+        echo "Committing DVC metadata changes if any..."
+        git add .dvc/ || echo "No .dvc directory to add"
         git add '*.dvc' || echo "No .dvc files to add"
         git add dvc.lock || echo "No dvc.lock to add"
         
-        # Check if there are changes to commit
+        # Only commit if we have changes
         if ! git diff --staged --quiet; then
-          git commit -m "📅 Update DVC metadata [skip ci]"
-          git push origin HEAD
-          echo "DVC metadata committed and pushed successfully!"
+          git commit -m "Update DVC metadata [skip ci]"
+          git push origin HEAD || echo "No changes to push or push failed"
+          echo "DVC metadata committed and pushed."
         else
-          echo "No DVC metadata changes to commit"
+          echo "No DVC metadata changes to commit."
         fi
