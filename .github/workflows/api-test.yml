@@ -24,14 +24,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install testing dependencies
-        pip install pytest pytest-asyncio requests
-        # Install FastAPI dependencies
-        pip install fastapi uvicorn
-        # Install metrics dependencies
-        pip install prometheus-fastapi-instrumentator prometheus-client
-        # Install data handling dependencies
-        pip install pandas numpy
+        pip install pytest pytest-asyncio
+        # Install fastAPI specific requirements
+        pip install -r docker/fastAPI/requirements.txt
         # Install the project package
         pip install -e .
 
