@@ -1,0 +1,23 @@
+{
+  "name": "@bookrecmcp/server",
+  "version": "1.0.0",
+  "description": "Book Recommendation MCP Server",
+  "main": "index.js",
+  "bin": {
+    "book-rec-mcp": "./cli.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "book-recommendation"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^9.5.0",
+    "cross-spawn": "^7.0.6"
+  }
+}

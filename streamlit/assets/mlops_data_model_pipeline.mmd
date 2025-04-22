@@ -1,0 +1,76 @@
+---
+title: Data Flow & Model Development Pipeline
+---
+flowchart LR
+    %% Data Flow and Model Development Pipeline
+    %% This diagram focuses on the data and model aspects of the MLOps architecture
+
+    %% Data Management
+    subgraph DataLayer["Data Management"]
+        direction TB
+        RawData[("Raw Book Data")]
+        ProcessedData[("Processed Data")]
+        FeatureData[("Feature Matrices")]
+        DVC["DVC - Data Versioning"]
+        DAGsHub["DAGsHub"]
+    end
+
+    %% Model Development
+    subgraph ModelLayer["Model Development"]
+        direction TB
+        FeatureEng["Feature Engineering"]
+        Training["Model Training"]
+        MLflow["MLflow - Experiment Tracking"]
+        ModelRegistry[("Model Registry")]
+        Evaluation["Model Evaluation"]
+    end
+
+    %% Workflow Orchestration for Data & Model Pipeline
+    subgraph DataModelOrc["Pipeline Orchestration"]
+        direction TB
+        PipelineDAG["ML Pipeline DAG"]
+        DVCContainer["DVC Container"]
+        DataRetrieval["Data Retrieval Container"]
+        DataIngestion["Data Ingestion Container"]
+        ModelTraining["Model Training Container"]
+    end
+
+    %% Data flow relationships
+    RawData -->|versioned| DVC
+    DVC -->|syncs with| DAGsHub
+    DVC -->|provides| ProcessedData
+    ProcessedData -->|input for| FeatureEng
+    FeatureEng -->|creates| FeatureData
+    FeatureData -->|feeds| Training
+    Training -->|logs metrics| MLflow
+    Training -->|produces| ModelRegistry
+    ModelRegistry -->|evaluated by| Evaluation
+
+    %% Orchestration relationships
+    PipelineDAG -->|orchestrates| DataRetrieval
+    DataRetrieval -->|processes| RawData
+    PipelineDAG -->|orchestrates| DataIngestion
+    DataIngestion -->|creates| ProcessedData
+    DataIngestion -->|builds| FeatureData
+    PipelineDAG -->|orchestrates| ModelTraining
+    ModelTraining -->|runs| Training
+    ModelTraining -->|updates| ModelRegistry
+    DVCContainer -->|manages| DVC
+
+    %% GitHub Actions
+    GitHubActions["GitHub Actions"]
+    DVCPush["DVC Push Workflow"]
+    GitHubActions -->|triggers| DVCPush
+    DVCPush -->|updates| DAGsHub
+
+    %% Styling
+    classDef data fill:#2a9d2a,stroke:#1a661a,stroke-width:2px,color:white
+    classDef model fill:#e6550d,stroke:#a63603,stroke-width:2px,color:white
+    classDef orchestration fill:#2ca02c,stroke:#217821,stroke-width:2px,color:white
+    classDef cicd fill:#9467bd,stroke:#7b3ab7,stroke-width:2px,color:white
+
+    %% Apply styles
+    class RawData,ProcessedData,FeatureData,DVC,DAGsHub data
+    class FeatureEng,Training,MLflow,ModelRegistry,Evaluation model
+    class PipelineDAG,DVCContainer,DataRetrieval,DataIngestion,ModelTraining orchestration
+    class GitHubActions,DVCPush cicd
