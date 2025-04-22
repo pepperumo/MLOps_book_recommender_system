@@ -7,9 +7,10 @@ import os
 import logging
 import mlflow
 import yaml
+import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List
-import numpy as np
 from dotenv import load_dotenv, find_dotenv
 
 # Load environment variables from .env file
@@ -41,8 +42,17 @@ def setup_mlflow(repo_owner='pepperumo', repo_name='MLOps_book_recommender_syste
         
         if mlflow_uri and mlflow_username and mlflow_password:
             # Environment variables are set, use them directly
-            logger.info(f"Using MLflow tracking URI from environment: {mlflow_uri}")
-            mlflow.set_tracking_uri(mlflow_uri)
+            # Make sure URI is properly formatted without escaped characters
+            fixed_uri = mlflow_uri.replace("\\x3a", ":")
+            # Make sure URI uses https:// not https/ or other incorrect formats
+            if "://" not in fixed_uri and "http" in fixed_uri:
+                fixed_uri = fixed_uri.replace("https", "https://")
+                
+            logger.info(f"Using MLflow tracking URI from environment: {fixed_uri}")
+            mlflow.set_tracking_uri(fixed_uri)
+            # Explicitly set tracking username and password
+            os.environ["MLFLOW_TRACKING_USERNAME"] = mlflow_username
+            os.environ["MLFLOW_TRACKING_PASSWORD"] = mlflow_password
             # No need to call dagshub.init() as credentials are already set
             return True
         else:

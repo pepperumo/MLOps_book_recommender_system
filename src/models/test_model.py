@@ -392,7 +392,7 @@ def display_results(summary: Dict[str, Any]) -> None:
     logger.info("Results table generated")
 
 
-def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures') -> None:
+def generate_visualization(summary: Dict[str, Any], output_dir: str = None) -> None:
     """
     Generate visualizations for test results.
     
@@ -400,11 +400,13 @@ def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures')
     ----------
     summary : Dict[str, Dict[str, Any]]
         Summary of test results
-    output_dir : str
-        Output directory for figures
+    output_dir : str, optional
+        Output directory for figures. If None, figures are not saved.
     """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    # If output_dir is None, don't generate visualizations
+    if output_dir is None:
+        logger.info("Skipping visualization generation as output_dir is None")
+        return
     
     # Set style for plots
     plt.style.use('ggplot')
@@ -431,9 +433,9 @@ def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures')
     plt.ylabel('Time (seconds)', fontsize=12)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     
-    # Save the figure
+    # Show the figure but don't save it
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'response_time_comparison.png'), dpi=300)
+    plt.show()
     plt.close()
     
     # Create a bar chart for recommendation count metrics
@@ -458,12 +460,12 @@ def generate_visualization(summary: Dict[str, Any], output_dir: str = 'figures')
     plt.ylabel('Average Number of Recommendations', fontsize=12)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     
-    # Save the figure
+    # Show the figure but don't save it
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'recommendation_count_comparison.png'), dpi=300)
+    plt.show()
     plt.close()
     
-    logger.info(f"Visualizations saved to {output_dir}")
+    logger.info("Visualizations displayed")
 
 def main() -> int:
     """
@@ -500,13 +502,12 @@ def main() -> int:
         user_results = test_user_recommendations(user_ids=user_sample)
         similar_book_results = test_similar_books(book_ids=book_sample)
         cold_start_results = test_cold_start()
-        
-        # Summarize and display results
+          # Summarize and display results
         summary = summarize_results(user_results, similar_book_results, cold_start_results)
         display_results(summary)
         
-        # Generate visualizations
-        generate_visualization(summary)
+        # Skip visualization generation by passing None as output_dir
+        generate_visualization(summary, output_dir=None)
         
         return 0
         

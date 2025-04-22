@@ -156,47 +156,7 @@ def evaluate_recommender(recommender: Any, test_df: pd.DataFrame,
     return results
 
 
-def save_evaluation_results(evaluation_results: Dict[str, float], 
-                           results_dir: str = 'data/results',
-                           model_name: str = 'collaborative') -> str:
-    """
-    Save evaluation results to a CSV file.
-    
-    Parameters
-    ----------
-    evaluation_results : dict
-        Evaluation results to save
-    results_dir : str, optional
-        Directory to save results to (default: 'data/results')
-    model_name : str, optional
-        Name of the model being evaluated (default: 'collaborative')
-        
-    Returns
-    -------
-    str
-        Path to the saved results file
-    """
-    try:
-        # Create results directory if it doesn't exist
-        os.makedirs(results_dir, exist_ok=True)
-        
-        # Use a fixed filename for better DVC tracking
-        results_file = os.path.join(results_dir, 'evaluation_results.csv')
-        
-        # Convert to DataFrame for easier saving
-        results_df = pd.DataFrame()
-        
-        for metric, value in evaluation_results.items():
-            results_df.loc[model_name, metric] = value
-        
-        # Save to CSV
-        results_df.to_csv(results_file)
-        logger.info(f"Saved evaluation results to {results_file}")
-        
-        return results_file
-    except Exception as e:
-        logger.error(f"Error saving evaluation results: {e}")
-        return ""
+# Removed save_evaluation_results function as it's no longer needed
 
 
 def export_metrics_to_prometheus(results, model_type="collaborative"):
@@ -246,10 +206,13 @@ def export_metrics_to_prometheus(results, model_type="collaborative"):
         print(f"Pushing metrics to Prometheus Pushgateway at: {push_gateway}")
         push_to_gateway(push_gateway, job=f'book_recommender_evaluation', registry=registry)
         print(f"Successfully exported metrics to Prometheus pushgateway")
+    except ImportError:
+        logger.warning("Prometheus client library not found. Skipping metric export.")
     except Exception as e:
-        print(f"Warning: Could not push metrics to Prometheus: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
+        # Catch potential connection errors or other issues
+        logger.warning(f"Could not push metrics to Prometheus Pushgateway at {push_gateway}: {e}")
+        # Optionally log the full traceback for debugging if needed, but avoid printing it by default
+        # logger.debug(traceback.format_exc())
 
 
 def run_evaluation(recommender, test_file: str = 'merged_test.csv', 
@@ -323,8 +286,7 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
                     recall_metrics = {k: v for k, v in results.items() if k.startswith("recall")}
                     if precision_metrics and recall_metrics:
                         log_precision_recall_curve(precision_metrics, recall_metrics, k_values)
-                    
-                    # Log additional info
+                      # Log additional info
                     mlflow.set_tag("model_type", model_name)
                     mlflow.set_tag("evaluation_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                     mlflow.set_tag("test_file", test_file)
@@ -335,11 +297,7 @@ def run_evaluation(recommender, test_file: str = 'merged_test.csv',
             except Exception as e:
                 logger.warning(f"Error during MLflow logging: {e}")
                 logger.warning(traceback.format_exc())
-        
-        # Save to local filesystem
-        save_evaluation_results(results, model_name=model_name)
-        
-        # Export metrics to Prometheus
+          # Export metrics to Prometheus
         export_metrics_to_prometheus(results, model_type=model_name)
         
         # Print nicely formatted results by k value
@@ -450,8 +408,7 @@ if __name__ == "__main__":
         
         # Determine model name from file path
         model_name = os.path.basename(model_path).split('.')[0]
-        
-        # Run evaluation
+          # Run evaluation
         logger.info(f"Evaluating {model_name} model")
         results = run_evaluation(
             recommender=model,
@@ -460,20 +417,6 @@ if __name__ == "__main__":
             model_name=model_name,
             sample_size=args.sample_size
         )
-        
-        # Save results with consistent naming
-        os.makedirs(args.output_dir, exist_ok=True)
-        # Remove timestamp from filename for better DVC tracking
-        results_file = os.path.join(args.output_dir, 'evaluation_results.csv')
-        
-        # Convert to DataFrame for easier saving
-        results_df = pd.DataFrame()
-        for metric, value in results.items():
-            results_df.loc[model_name, metric] = value
-        
-        # Save to CSV
-        results_df.to_csv(results_file)
-        logger.info(f"Saved evaluation results to {results_file}")
         
         # Print results to console
         print("\nEvaluation Results:")

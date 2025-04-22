@@ -33,12 +33,9 @@ stages:
     outs:
       - models/collaborative.pkl
       - models/collaborative_config.json
-
   evaluate_model:
     cmd: python -m src.models.evaluate_model --model-path models/collaborative.pkl
     deps:
       - src/models/evaluate_model.py
       - models/collaborative.pkl
       - data/processed/merged_test.csv
-    outs:
-      - data/results/evaluation_results.csv
