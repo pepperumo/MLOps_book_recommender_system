@@ -110,14 +110,16 @@ declare -a paths=(
   data/features
 )
 
+# Force commit all tracked files to ensure latest changes are captured
+echo "🔄 Forcing DVC to commit latest versions of tracked files..."
 for p in "${paths[@]}"; do
   if [[ -e "$p" ]]; then
-    dvc commit "$p" 2>/dev/null || dvc add "$p" || echo "⚠️  $p already up‑to‑date"
+    dvc commit -f "$p" || dvc add "$p" || echo "⚠️ Could not update $p"
   fi
 done
 
 echo "📤 Pushing data to DVC…"
-dvc push || echo "⚠️  DVC push failed – check remote config"
+dvc push -v || echo "⚠️  DVC push failed – check remote config"
 
 ########################################
 # Git commit & push (optional)
