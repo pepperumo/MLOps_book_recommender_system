@@ -16,11 +16,28 @@ ls -la /root/.ssh || echo "SSH directory doesn't exist yet"
 mkdir -p /root/.ssh
 chmod 700 /root/.ssh
 
+# Debug the contents of the SSH directory
+echo "Files in /root/.ssh after mkdir:"
+ls -la /root/.ssh
+
+# Cache a copy of the key to avoid regeneration
+if [[ -f "/app/.ssh-key-cache/id_ed25519" && ! -f "/root/.ssh/id_ed25519" ]]; then
+  echo "🔄 Restoring SSH key from cache..."
+  mkdir -p /app/.ssh-key-cache
+  cp /app/.ssh-key-cache/id_ed25519* /root/.ssh/
+  chmod 600 /root/.ssh/id_ed25519
+fi
+
 if [[ ! -f "/root/.ssh/id_ed25519" ]]; then
   echo "🔑 Generating SSH keys inside the container..."
   # Generate SSH key without passphrase
   ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N "" -C "pepperumo@gmail.com"
   chmod 600 /root/.ssh/id_ed25519
+  
+  # Cache the key in the project directory for persistence
+  mkdir -p /app/.ssh-key-cache
+  cp /root/.ssh/id_ed25519* /app/.ssh-key-cache/
+  chmod 600 /app/.ssh-key-cache/id_ed25519
   
   # Display the public key for manual addition to GitHub
   echo "⚠️ IMPORTANT: Add this SSH public key to your GitHub account:"
@@ -28,6 +45,10 @@ if [[ ! -f "/root/.ssh/id_ed25519" ]]; then
   cat /root/.ssh/id_ed25519.pub
   echo "===================="
   echo "Then run the container again."
+else
+  echo "✅ Existing SSH key found at /root/.ssh/id_ed25519"
+  echo "Public key fingerprint:"
+  ssh-keygen -lf /root/.ssh/id_ed25519.pub
 fi
 
 # Add GitHub to known hosts to avoid prompt
