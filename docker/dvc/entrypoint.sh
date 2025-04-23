@@ -4,17 +4,27 @@ set -euo pipefail
 echo "🚀 Starting DVC container..."
 
 ########################################
-# GitHub – Personal‑Access‑Token over HTTPS (no passwords)
+# SSH key generation and GitHub setup
 ########################################
-# Inject the PAT via a global url.*.insteadOf rule so every GitHub URL
-# transparently carries the token. No `.netrc`, no credential helpers.
-#   https://<user>:<token>@github.com/<owner>/<repo>.git
+# Generate SSH keys inside the container if they don't exist
 
-if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
-  git config --global url."https://${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com/".insteadOf \
-                       "https://github.com/"
-  echo "🔧  GitHub token authentication configured (url.insteadOf)."
+mkdir -p /root/.ssh
+if [[ ! -f "/root/.ssh/id_ed25519" ]]; then
+  echo "🔑 Generating SSH keys inside the container..."
+  # Generate SSH key without passphrase
+  ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N "" -C "pepperumo@gmail.com"
+  chmod 600 /root/.ssh/id_ed25519
+  
+  # Display the public key for manual addition to GitHub
+  echo "⚠️ IMPORTANT: Add this SSH public key to your GitHub account:"
+  echo "===================="
+  cat /root/.ssh/id_ed25519.pub
+  echo "===================="
+  echo "Then run the container again."
 fi
+
+# Add GitHub to known hosts to avoid prompt
+ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
 
 ########################################
 # Workspace housekeeping
@@ -87,10 +97,21 @@ dvc push || echo "⚠️  DVC push failed – check remote config"
 if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   git add -A
   git commit -m "📊 Sync DVC artefacts $(date +%F)" || echo "ℹ️  Nothing to commit"
-  # Embed the PAT directly for this push to avoid helper issues
-  secure_url="${GIT_HTTPS_URL/https:\/\/github.com/https:\/\/${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com}"
-  git remote set-url origin "${secure_url}"
-  git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed"
+  
+  # Use SSH for GitHub connection if available
+  if [[ -f "/root/.ssh/id_rsa" || -f "/root/.ssh/id_ed25519" ]]; then
+    echo "🔑 Using SSH for GitHub authentication"    # Make sure SSH key permissions are correct
+    chmod 600 /root/.ssh/id_*
+    # Add GitHub to known hosts to avoid prompt
+    ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
+    # Set Git remote to SSH URL
+    git remote set-url origin "git@github.com:pepperumo/MLOps_book_recommender_system.git"
+    # Push using SSH
+    git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check SSH setup"
+  else
+    echo "⚠️ No SSH keys found - skipping Git push"
+    echo "Please set up SSH authentication for GitHub"
+  fi
 else
   echo "⏩ Git push skipped."
 fi

@@ -7,7 +7,6 @@ services:
       dockerfile: docker/dvc/Dockerfile
     volumes:
       - .:/app                       # project
-      - ~/.ssh:/root/.ssh:ro         # optional – for private‑repo git/SSH
     env_file:
       - .env                         # secrets & CI vars live here
     environment:
