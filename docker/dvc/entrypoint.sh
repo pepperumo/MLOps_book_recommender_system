@@ -8,7 +8,14 @@ echo "🚀 Starting DVC container..."
 ########################################
 # Generate SSH keys inside the container if they don't exist
 
+# Check volume permissions and content
+echo "📁 Checking SSH directory..."
+ls -la /root
+ls -la /root/.ssh || echo "SSH directory doesn't exist yet"
+
 mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+
 if [[ ! -f "/root/.ssh/id_ed25519" ]]; then
   echo "🔑 Generating SSH keys inside the container..."
   # Generate SSH key without passphrase
