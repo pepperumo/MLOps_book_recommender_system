@@ -4,13 +4,8 @@ set -euo pipefail
 echo "🚀 Starting DVC container..."
 
 ########################################
-########################################
 # GitHub – Personal‑Access‑Token over HTTPS
 ########################################
-# Git ignores “.netrc” unless a helper tells it to use it, so we
-# configure the built‑in *store* helper and write the credentials once.
-# The helper reads the token for every `git push` / `git fetch`.
-
 if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
   git config --global credential.helper 'store --file /root/.git-credentials'
   printf "https://%s:%s@github.com
@@ -20,21 +15,8 @@ if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
 fi
 
 ########################################
-if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
-  cat <<EOF > /root/.netrc
-machine github.com
-login ${GIT_USER_NAME}
-password ${GITHUB_TOKEN}
-machine api.github.com
-login ${GIT_USER_NAME}
-password ${GITHUB_TOKEN}
-EOF
-  chmod 600 /root/.netrc
-  echo "🔧  GitHub token authentication configured (.netrc)."
-fi
-
-########################################
 # Workspace housekeeping
+########################################
 ########################################
 mkdir -p /app/{logs,models,data}
 
@@ -102,7 +84,9 @@ dvc push || echo "⚠️  DVC push failed – check remote config"
 if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   git add -A
   git commit -m "📊 Sync DVC artefacts $(date +%F)" || echo "ℹ️  Nothing to commit"
-  git remote set-url origin "${GIT_HTTPS_URL}"
+  # Embed the PAT directly for this push to avoid helper issues
+  secure_url="${GIT_HTTPS_URL/https:\/\/github.com/https:\/\/${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com}"
+  git remote set-url origin "${secure_url}"
   git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed"
 else
   echo "⏩ Git push skipped."
