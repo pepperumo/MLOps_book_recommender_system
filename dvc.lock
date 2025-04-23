@@ -56,24 +56,28 @@ stages:
       hash: md5
       md5: 7ae94db61828ffa05602671824cf4c9a
       size: 808
+      isexec: true
     - path: data/features
       hash: md5
-      md5: ecfd70cdd8c00e0281b6e710743c3422.dir
-      size: 674015
+      md5: 26f6594ae7ba56206386de4938ff90fa.dir
+      size: 673927
       nfiles: 4
     - path: src/models/train_model.py
       hash: md5
-      md5: f81f6afeb243d49c29e57f5f7d7a54d6
-      size: 22682
+      md5: 6e2670d3cf73c52d307277b9ad4ed9b9
+      size: 22125
+      isexec: true
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: 43720710eead342685760c92cba53e4c
-      size: 15317190
+      md5: b002430031fc97a2cbb2105fef27ae2c
+      size: 15286590
+      isexec: true
     - path: models/collaborative_config.json
       hash: md5
-      md5: 0f074b21145446e651399b5ea32fb71a
-      size: 417
+      md5: 3736ff196c74671051d871e675b1c4c0
+      size: 403
+      isexec: true
   evaluate_model:
     cmd: python -m src.models.evaluate_model --model-path models/collaborative.pkl
     deps:
