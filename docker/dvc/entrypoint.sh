@@ -115,9 +115,16 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
     # Push to Git if a token is available
     if [ -n "$GITHUB_TOKEN" ]; then
         echo "📤 Pushing to Git repository..."
-        # Use the token in a more reliable way
-        git remote set-url origin "https://$GIT_USER_NAME:$GITHUB_TOKEN@github.com/pepperumo/MLOps_book_recommender_system.git"
+        # Configure Git credential helper to use our token for a single use
+        git config --global credential.helper store
+        echo "https://$GITHUB_TOKEN:x-oauth-basic@github.com" > /root/.git-credentials
+        chmod 600 /root/.git-credentials
+        
+        # Push to the remote repository
         git push origin "$GIT_BRANCH" || echo "⚠️ Git push failed, check credentials"
+        
+        # Clean up credentials
+        rm -f /root/.git-credentials
     else
         echo "⚠️ GITHUB_TOKEN not set, skipping Git push"
     fi
