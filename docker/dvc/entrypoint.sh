@@ -4,18 +4,21 @@ set -euo pipefail
 echo "🚀 Starting DVC container..."
 
 ########################################
-# GitHub – Personal‑Access‑Token over HTTPS
+# GitHub – Personal‑Access‑Token over HTTPS (no passwords)
 ########################################
+# Inject the PAT via a global url.*.insteadOf rule so every GitHub URL
+# transparently carries the token. No `.netrc`, no credential helpers.
+#   https://<user>:<token>@github.com/<owner>/<repo>.git
+
 if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
-  git config --global credential.helper 'store --file /root/.git-credentials'
-  printf "https://%s:%s@github.com
-" "$GIT_USER_NAME" "$GITHUB_TOKEN" > /root/.git-credentials
-  chmod 600 /root/.git-credentials
-  echo "🔧  GitHub token authentication configured (credential.store)."
+  git config --global url."https://${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com/".insteadOf \
+                       "https://github.com/"
+  echo "🔧  GitHub token authentication configured (url.insteadOf)."
 fi
 
 ########################################
 # Workspace housekeeping
+########################################
 ########################################
 ########################################
 mkdir -p /app/{logs,models,data}
