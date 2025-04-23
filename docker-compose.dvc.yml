@@ -1,52 +1,29 @@
-version: '3'
+version: "3.9"
 
 services:
-  dvc:    
+  dvc:
     build:
       context: .
       dockerfile: docker/dvc/Dockerfile
     volumes:
-      - .:/app
-      - ~/.ssh:/root/.ssh:ro  # Mount SSH keys for authentication if needed
+      - .:/app                       # project
+      - ~/.ssh:/root/.ssh:ro         # optional – for private‑repo git/SSH
+    env_file:
+      - .env                         # secrets & CI vars live here
     environment:
-      # Git configuration
-      - GIT_USER_NAME=${GIT_USER_NAME:-pepperumo}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-pepperumo@gmail.com}
-      - GIT_BRANCH=${GIT_BRANCH:-master}
-      # Authentication options
-      - GIT_HTTPS_URL=${GIT_HTTPS_URL:-https://github.com/pepperumo/MLOps_book_recommender_system.git}
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      # DVC configuration
-      - DVC_REMOTE=${DVC_REMOTE:-origin}
-      # DAGsHub configuration
-      - DAGSHUB_USER=${DAGSHUB_USER}
-      - DAGSHUB_TOKEN=${DAGSHUB_TOKEN}
-      - DVC_USERNAME=${DAGSHUB_USER}
-      - DVC_PASSWORD=${DAGSHUB_TOKEN}
-      # MLflow configuration (might be useful for DVC metrics)
-      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
-      - MLFLOW_TRACKING_USERNAME=${MLFLOW_TRACKING_USERNAME}
-      - MLFLOW_TRACKING_PASSWORD=${MLFLOW_TRACKING_PASSWORD}
-      # Pipeline options
-      - SKIP_GIT_PUSH=${SKIP_GIT_PUSH:-false}
-      - SKIP_TRAINING_WAIT=${SKIP_TRAINING_WAIT:-true}
-      - COMMIT_ALL_CHANGES=${COMMIT_ALL_CHANGES:-true}
-      # Python settings
-      - PYTHONUNBUFFERED=1
-      - PYTHONPATH=/app
-    
-    # By default, the container will run the entrypoint script and exit
-    # You can override this with a command to keep it alive for debugging
-    # command: ["keep-alive"]
-    
-    # Optional dependencies if your DVC process should wait for other services
-    # depends_on:
-    #   - your-model-training-service
-    
+      # Non‑secret defaults – can be overridden via .env or CI vars
+      GIT_USER_NAME:  "${GIT_USER_NAME:-pepperumo}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-pepperumo@gmail.com}"
+      GIT_BRANCH:     "${GIT_BRANCH:-master}"
+      DVC_REMOTE:     "${DVC_REMOTE:-origin}"
+      SKIP_GIT_PUSH:      "${SKIP_GIT_PUSH:-false}"
+      SKIP_TRAINING_WAIT: "${SKIP_TRAINING_WAIT:-true}"
+      COMMIT_ALL_CHANGES: "${COMMIT_ALL_CHANGES:-true}"
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH:      "/app"
     networks:
       - mlops-network
 
 networks:
   mlops-network:
-    name: mlops-network
     driver: bridge
