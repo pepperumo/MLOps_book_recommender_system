@@ -102,6 +102,10 @@ dvc-storage/
 .dvc/tmp/
 .dvc/plots/
 *.dvc.backup
+# DVC / auth secrets
+.dvc/config.local
+.git-credentials
+/root/.netrc
 
 # MLflow
 mlruns/

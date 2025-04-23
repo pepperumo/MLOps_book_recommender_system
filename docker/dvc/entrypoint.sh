@@ -4,7 +4,21 @@ set -euo pipefail
 echo "🚀 Starting DVC container..."
 
 ########################################
-# GitHub – PAT via .netrc (non‑interactive containers)
+########################################
+# GitHub – Personal‑Access‑Token over HTTPS
+########################################
+# Git ignores “.netrc” unless a helper tells it to use it, so we
+# configure the built‑in *store* helper and write the credentials once.
+# The helper reads the token for every `git push` / `git fetch`.
+
+if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
+  git config --global credential.helper 'store --file /root/.git-credentials'
+  printf "https://%s:%s@github.com
+" "$GIT_USER_NAME" "$GITHUB_TOKEN" > /root/.git-credentials
+  chmod 600 /root/.git-credentials
+  echo "🔧  GitHub token authentication configured (credential.store)."
+fi
+
 ########################################
 if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
   cat <<EOF > /root/.netrc
