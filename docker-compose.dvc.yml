@@ -1,18 +1,22 @@
 version: '3'
 
 services:
-  dvc:
+  dvc:    
     build:
       context: .
       dockerfile: docker/dvc/Dockerfile
     volumes:
       - .:/app
       - ~/.ssh:/root/.ssh:ro  # Mount SSH keys for authentication if needed
-    environment:      # Git configuration
-      - GIT_USER_NAME=${GIT_USER_NAME:-MLOpsBot}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-mlops-bot@example.com}
-      - GIT_BRANCH=${GIT_BRANCH:-master}  # Changed from main to master to match your actual branch
-      - GIT_REMOTE_URL=${GIT_REMOTE_URL:-https://github.com/pepperumo/MLOps_book_recommender_system.git}
+    environment:
+      # Git configuration
+      - GIT_USER_NAME=${GIT_USER_NAME:-pepperumo}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-pepperumo@gmail.com}
+      - GIT_BRANCH=${GIT_BRANCH:-master}
+      # Authentication options (support both methods)
+      - USE_SSH=${USE_SSH:-false}  # Changed to false by default for portability
+      - GIT_HTTPS_URL=${GIT_HTTPS_URL:-https://github.com/pepperumo/MLOps_book_recommender_system.git}
+      - GIT_SSH_URL=${GIT_SSH_URL:-git@github.com:pepperumo/MLOps_book_recommender_system.git}
       - GITHUB_TOKEN=${GITHUB_TOKEN}
         # DVC configuration
       - DVC_REMOTE=${DVC_REMOTE:-origin}
