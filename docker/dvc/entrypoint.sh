@@ -111,20 +111,23 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
         git add '*.dvc' .dvc/config || echo "⚠️ No DVC files to add"
         git commit -m "📊 Update DVC tracked files $(date +%Y-%m-%d)" || echo "⚠️ Nothing to commit"
     fi
-    
-    # Push to Git if a token is available
+      # Push to Git if a token is available
     if [ -n "$GITHUB_TOKEN" ]; then
         echo "📤 Pushing to Git repository using HTTPS with token..."
-        # Configure Git credential helper to use our token for a single use
-        git config --global credential.helper store
-        echo "https://$GIT_USER_NAME:$GITHUB_TOKEN@github.com" > /root/.git-credentials
-        chmod 600 /root/.git-credentials
+        
+        # Use the token through Git configuration (not in URL)
+        git config --global credential.helper "store --file=/tmp/git-credentials"
+        echo "https://oauth2:$GITHUB_TOKEN@github.com" > /tmp/git-credentials
+        chmod 600 /tmp/git-credentials
+        
+        # Set the remote URL without embedding credentials
+        git remote set-url origin "$GIT_HTTPS_URL"
         
         # Push to the remote repository
         git push origin "$GIT_BRANCH" || echo "⚠️ Git push failed, check credentials"
         
         # Clean up credentials
-        rm -f /root/.git-credentials
+        rm -f /tmp/git-credentials
     else
         echo "⚠️ GITHUB_TOKEN not set, skipping Git push"
     fi
