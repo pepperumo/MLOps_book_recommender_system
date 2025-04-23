@@ -1,13 +1,17 @@
 #!/bin/bash
-set -e  # Exit immediately on error
+set -euo pipefail  # Better error handling
 
 echo "🚀 Starting DVC container..."
 
 # Create a .netrc file for GitHub authentication if GITHUB_TOKEN and GIT_USER_NAME are set
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GIT_USER_NAME" ]; then
-    # Instead of using .netrc, configure Git directly with the token
-    git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-    echo "🔧 GitHub authentication configured using token."
+    cat <<EOF > /root/.netrc
+machine github.com
+  login $GIT_USER_NAME
+  password $GITHUB_TOKEN
+EOF
+    chmod 600 /root/.netrc
+    echo "🔧 GitHub authentication configured."
 fi
 
 # Create directories if they don't exist
@@ -98,7 +102,7 @@ dvc push || echo "⚠️ DVC push failed, check remote configuration"
 if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
     # Commit all changes including DVC files
     echo "📝 Committing all changes including DVC files to Git..."
-    if [ "${COMMIT_ALL_CHANGES:-false}" == "true" ]; then
+    if [[ "${COMMIT_ALL_CHANGES:-false}" == "true" ]]; then
         # Commit all changes in the repository
         git add -A
         git commit -m "📊 Update project with DVC tracked files $(date +%Y-%m-%d)" || echo "⚠️ Nothing to commit"
@@ -106,15 +110,17 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
         # Only commit DVC files (default behavior)
         git add '*.dvc' .dvc/config || echo "⚠️ No DVC files to add"
         git commit -m "📊 Update DVC tracked files $(date +%Y-%m-%d)" || echo "⚠️ Nothing to commit"
-    fi    # Push to Git if a token is available
-    if [ -n "$GITHUB_TOKEN" ]; then
+    fi    
+    
+    # Push to Git if a token is available
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         echo "📤 Pushing to Git repository using token authentication..."
         
         # The token is already configured in the Git URL rewriting
         # Just need to make sure the remote has the correct URL
         git remote set-url origin "$GIT_HTTPS_URL"
         
-        # Push to the remote repository
+        # Push to the remote repository (authentication handled by earlier config)
         git push origin "$GIT_BRANCH" || echo "⚠️ Git push failed, check credentials"
     else
         echo "⚠️ GITHUB_TOKEN not set, skipping Git push"
