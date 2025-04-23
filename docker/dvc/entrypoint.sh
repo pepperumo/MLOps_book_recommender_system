@@ -3,15 +3,15 @@ set -euo pipefail  # Better error handling
 
 echo "🚀 Starting DVC container..."
 
-# Create a .netrc file for GitHub authentication if GITHUB_TOKEN and GIT_USER_NAME are set
-if [ -n "$GITHUB_TOKEN" ] && [ -n "$GIT_USER_NAME" ]; then
-    cat <<EOF > /root/.netrc
-machine github.com
-  login $GIT_USER_NAME
-  password $GITHUB_TOKEN
-EOF
-    chmod 600 /root/.netrc
-    echo "🔧 GitHub authentication configured."
+########################################
+# GitHub – HTTPS + Personal-Access Token
+########################################
+# Works for both classic and fine-grained PATs.
+
+if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
+  git config --global url."https://${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com/".insteadOf \
+                       "https://github.com/"
+  echo "🔧 GitHub token authentication configured."
 fi
 
 # Create directories if they don't exist
@@ -132,7 +132,7 @@ fi
 echo "✅ DVC operations completed!"
 
 # Keep container alive if requested
-if [ "$1" = "keep-alive" ]; then
+if [[ ${1:-} = "keep-alive" ]]; then
     echo "🔄 Keeping container alive for debugging..."
     tail -f /dev/null
 fi
