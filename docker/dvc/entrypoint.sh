@@ -113,31 +113,7 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
     fi
     
     # Push to Git if a token is available
-    if [ "${USE_SSH:-false}" == "true" ]; then
-        echo "📤 Pushing to Git repository using SSH..."
-        # First ensure SSH key has correct permissions
-        if [ -f "/root/.ssh/id_rsa" ] || [ -f "/root/.ssh/id_ed25519" ]; then
-            chmod 600 /root/.ssh/id_*
-            chmod 644 /root/.ssh/*.pub
-            chmod 700 /root/.ssh
-            
-            # Start SSH agent and add keys
-            eval $(ssh-agent -s)
-            ssh-add /root/.ssh/id_ed25519 2>/dev/null || ssh-add /root/.ssh/id_rsa 2>/dev/null || echo "⚠️ No SSH keys available"
-            
-            # Configure Git to use SSH instead of HTTPS
-            git remote set-url origin "$GIT_SSH_URL"
-            
-            # Accept GitHub's host key automatically
-            mkdir -p /root/.ssh
-            ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
-            
-            # Push to GitHub using SSH
-            git push origin "$GIT_BRANCH" || echo "⚠️ Git push failed, check SSH credentials"
-        else
-            echo "⚠️ No SSH keys found in /root/.ssh/ directory"
-        fi
-    elif [ -n "$GITHUB_TOKEN" ]; then
+    if [ -n "$GITHUB_TOKEN" ]; then
         echo "📤 Pushing to Git repository using HTTPS with token..."
         # Configure Git credential helper to use our token for a single use
         git config --global credential.helper store
@@ -150,7 +126,7 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
         # Clean up credentials
         rm -f /root/.git-credentials
     else
-        echo "⚠️ Neither GITHUB_TOKEN nor SSH keys are available, skipping Git push"
+        echo "⚠️ GITHUB_TOKEN not set, skipping Git push"
     fi
 else
     echo "⏩ Git push skipped as requested"
