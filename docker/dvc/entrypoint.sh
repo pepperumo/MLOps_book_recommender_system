@@ -6,19 +6,17 @@ echo "🚀 Starting DVC container..."
 ########################################
 # GitHub – Personal Access Token Authentication
 ########################################
-# Using GitHub's recommended approach for token auth
+# Using GitHub's recommended approach for token auth in containers
 
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  # Create token helper file
-  echo "protocol=https
-host=github.com
-username=${GIT_USER_NAME:-pepperumo}
-password=${GITHUB_TOKEN}" > ~/.git-credentials
-  chmod 600 ~/.git-credentials
-  
-  # Configure Git to use the credentials
-  git config --global credential.helper 'store --file ~/.git-credentials'
-  echo "🔧 GitHub token authentication configured using credential store."
+if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
+  # Create a .netrc file which works better in container environments
+  cat > /root/.netrc << EOF
+machine github.com
+login ${GIT_USER_NAME}
+password ${GITHUB_TOKEN}
+EOF
+  chmod 600 /root/.netrc
+  echo "🔧 GitHub token authentication configured with .netrc file."
 fi
 
 # Create directories if they don't exist
