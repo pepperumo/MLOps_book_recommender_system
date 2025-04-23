@@ -5,13 +5,9 @@ echo "🚀 Starting DVC container..."
 
 # Create a .netrc file for GitHub authentication if GITHUB_TOKEN and GIT_USER_NAME are set
 if [ -n "$GITHUB_TOKEN" ] && [ -n "$GIT_USER_NAME" ]; then
-    cat <<EOF > /root/.netrc
-machine github.com
-  login $GIT_USER_NAME
-  password $GITHUB_TOKEN
-EOF
-    chmod 600 /root/.netrc
-    echo "🔧 GitHub authentication configured."
+    # Instead of using .netrc, configure Git directly with the token
+    git config --global url."https://${GITHUB_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+    echo "🔧 GitHub authentication configured using token."
 fi
 
 # Create directories if they don't exist
@@ -110,24 +106,16 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
         # Only commit DVC files (default behavior)
         git add '*.dvc' .dvc/config || echo "⚠️ No DVC files to add"
         git commit -m "📊 Update DVC tracked files $(date +%Y-%m-%d)" || echo "⚠️ Nothing to commit"
-    fi
-      # Push to Git if a token is available
+    fi    # Push to Git if a token is available
     if [ -n "$GITHUB_TOKEN" ]; then
-        echo "📤 Pushing to Git repository using HTTPS with token..."
+        echo "📤 Pushing to Git repository using token authentication..."
         
-        # Use the token through Git configuration (not in URL)
-        git config --global credential.helper "store --file=/tmp/git-credentials"
-        echo "https://oauth2:$GITHUB_TOKEN@github.com" > /tmp/git-credentials
-        chmod 600 /tmp/git-credentials
-        
-        # Set the remote URL without embedding credentials
+        # The token is already configured in the Git URL rewriting
+        # Just need to make sure the remote has the correct URL
         git remote set-url origin "$GIT_HTTPS_URL"
         
         # Push to the remote repository
         git push origin "$GIT_BRANCH" || echo "⚠️ Git push failed, check credentials"
-        
-        # Clean up credentials
-        rm -f /tmp/git-credentials
     else
         echo "⚠️ GITHUB_TOKEN not set, skipping Git push"
     fi
