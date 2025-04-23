@@ -126,13 +126,17 @@ with DAG(
     def track_model_performance():
         """Track model performance metrics over time"""
         try:
-            # Path to evaluation results
-            results_path = '/opt/airflow/data/results/evaluation_results.csv'
+            # Since we no longer save evaluation results, we'll skip this step
+            print("Skipping model performance tracking as we no longer save evaluation results")
+            return
             
-            # If results file doesn't exist, exit
-            if not os.path.exists(results_path):
-                print(f"Error: Results file {results_path} not found")
-                return
+            # Old code for reference:
+            # results_path = '/opt/airflow/data/results/evaluation_results.csv'
+            # 
+            # # If results file doesn't exist, exit
+            # if not os.path.exists(results_path):
+            #     print(f"Error: Results file {results_path} not found")
+            #     return
                 
             # Read the model evaluation metrics
             results_df = pd.read_csv(results_path, index_col=0)

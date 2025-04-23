@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting data ingestion process..."
+echo "🚀 Starting data processing process..."
 
 # Ensure directories exist
 mkdir -p /app/logs /app/data/processed /app/data/features
@@ -9,10 +9,10 @@ mkdir -p /app/logs /app/data/processed /app/data/features
 # Set Python path explicitly
 export PYTHONPATH=/app:$PYTHONPATH
 
-# Remove old ingestion_complete file (if exists)
-if [ -f /app/data/ingestion_complete ]; then
-    echo "🧹 Removing stale ingestion completion flag..."
-    rm /app/data/ingestion_complete
+# Remove old processing_complete file (if exists)
+if [ -f /app/data/processing_complete ]; then
+    echo "🧹 Removing stale processing completion flag..."
+    rm /app/data/processing_complete
 fi
 
 # Wait until data retrieval is complete
@@ -31,12 +31,12 @@ python -m src.data.process_data
 echo "🔨 Building feature matrices for recommendation models..."
 python -m src.features.build_features
 
-echo "✅ Data ingestion and feature engineering completed successfully."
+echo "✅ Data processing and feature engineering completed successfully."
 
 # Signal healthcheck completion explicitly:
-HEALTHCHECK_FILE="/app/data/ingestion_complete"
+HEALTHCHECK_FILE="/app/data/processing_complete"
 
-# Remove any stale ingestion_complete (to ensure correctness)
+# Remove any stale processing_complete (to ensure correctness)
 if [ -f "${HEALTHCHECK_FILE}" ]; then
     rm "${HEALTHCHECK_FILE}"
 fi
@@ -44,8 +44,6 @@ fi
 touch "${HEALTHCHECK_FILE}"
 echo "🎯 Health check file (${HEALTHCHECK_FILE}) created."
 
-# Keep container alive if debugging
-if [ "$1" = "keep-alive" ]; then
-    echo "🐞 Container remains running for debugging purposes."
-    tail -f /dev/null
-fi
+# Keep the container running after task completion for healthcheck
+echo "📌 Task completed. Keeping container running for healthcheck..."
+tail -f /dev/null

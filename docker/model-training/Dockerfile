@@ -11,7 +11,7 @@ COPY src/ ./src/
 COPY setup.py .
 
 # Create directories for models, features, data, and logs
-RUN mkdir -p data/results data/features models logs
+RUN mkdir -p data/features models logs
 
 # Set environment variables
 ENV PYTHONPATH=/app

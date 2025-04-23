@@ -4,7 +4,7 @@ set -e  # Exit immediately on error
 echo "🚀 Starting model training and evaluation..."
 
 # Ensure necessary directories exist
-mkdir -p /app/logs /app/models /app/data/results
+mkdir -p /app/logs /app/models 
 
 
 # 🔄 Remove stale training completion flag if it exists
@@ -13,6 +13,16 @@ if [ -f "$HEALTHCHECK_FILE" ]; then
     echo "🧹 Removing stale training completion flag..."
     rm "$HEALTHCHECK_FILE"
 fi
+
+# Wait for data processing completion flag
+echo "⏳ Waiting for data processing completion flag..."
+PROCESSING_COMPLETE_FILE="/app/data/processing_complete"
+while [ ! -f "$PROCESSING_COMPLETE_FILE" ]; do
+    echo "🔍 Checking for data processing completion flag at: $PROCESSING_COMPLETE_FILE"
+    echo "⏳ Data processing not complete yet, retrying in 5 seconds..."
+    sleep 5
+done
+echo "✅ Data processing completion flag found. Data is ready for model training."
 
 # ⏳ Wait explicitly for feature files to be created
 FEATURE_FILE="/app/data/features/user_item_matrix.npz"
@@ -32,11 +42,9 @@ python -m src.models.train_model --output-dir "$MODEL_DIR"
 echo "✅ Model training completed successfully."
 
 # 📊 Evaluate trained model explicitly specifying paths
-RESULTS_DIR="/app/data/results"
 MODEL_PATH="/app/models/collaborative.pkl"
-mkdir -p "$RESULTS_DIR" # Ensure the results directory exists
-echo "📊 Evaluating model, results will be saved in $RESULTS_DIR..."
-python -m src.models.evaluate_model --model-path "$MODEL_PATH" --output-dir "$RESULTS_DIR"
+echo "📊 Evaluating model"
+python -m src.models.evaluate_model --model-path "$MODEL_PATH" 
 echo "✅ Model evaluation completed successfully."
 
 
@@ -44,8 +52,7 @@ echo "✅ Model evaluation completed successfully."
 touch "$HEALTHCHECK_FILE"
 echo "🎯 Created training completion flag at $HEALTHCHECK_FILE."
 
-# 🐞 Optional keep-alive for debugging
-if [ "$1" = "keep-alive" ]; then
-    echo "🐞 Container running for debugging. Use Ctrl+C to exit."
-    tail -f /dev/null
+# Keep the container running after task completion for healthcheck
+echo "📌 Task completed. Keeping container running for healthcheck..."
+tail -f /dev/null
 fi

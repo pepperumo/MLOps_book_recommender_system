@@ -23,8 +23,6 @@ python -m src.data.retrieve_raw_data
 touch /app/data/raw/retrieval_complete
 echo "✅ Data retrieval completed. retrieval_complete file created."
 
-# Keep the container running if requested
-if [ "$1" = "keep-alive" ]; then
-    echo "🐞 Container will remain running for debugging."
-    tail -f /dev/null
-fi
+# Keep the container running after task completion for healthcheck
+echo "📌 Task completed. Keeping container running for healthcheck..."
+tail -f /dev/null

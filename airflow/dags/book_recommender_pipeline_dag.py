@@ -105,14 +105,18 @@ with DAG(
     def push_metrics_to_prometheus():
         """Push model evaluation metrics to Prometheus Pushgateway"""
         try:
-            # Read evaluation results
-            results_path = '/opt/airflow/data/results/evaluation_results.csv'
-            if not os.path.exists(results_path):
-                print(f"Error: Results file {results_path} not found")
-                return
+            # Since we no longer save evaluation results, we'll skip this step
+            print("Skipping evaluation metrics push as we no longer save evaluation results")
+            return
+            
+            # Old code for reference:
+            # results_path = '/opt/airflow/data/results/evaluation_results.csv'
+            # if not os.path.exists(results_path):
+            #     print(f"Error: Results file {results_path} not found")
+            #     return
 
             # Parse the CSV to get actual metrics
-            results_df = pd.read_csv(results_path, index_col=0)
+            # results_df = pd.read_csv(results_path, index_col=0)
             
             # Get the metrics for the collaborative model
             if 'collaborative' in results_df.index:

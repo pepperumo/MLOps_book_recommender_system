@@ -1,0 +1,43 @@
+# This file is for running the complete data pipeline and model training
+
+services:
+  data-retrieval:
+    build:
+      context: .
+      dockerfile: docker/data-retrieval/Dockerfile
+    container_name: data-retrieval-container
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/data/raw/retrieval_complete"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - pipeline-network
+  data-processing:
+    build:
+      context: .
+      dockerfile: docker/data-processing/Dockerfile
+    container_name: data-processing-container
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - data-retrieval
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/data/processing_complete"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - pipeline-network
+
+networks:
+  pipeline-network:
+    driver: bridge

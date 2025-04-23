@@ -4,7 +4,7 @@ set -e  # Exit immediately on error
 echo "🚀 Starting services for Hugging Face deployment..."
 
 # Ensure necessary directories exist
-mkdir -p /app/logs /app/models /app/data/processed /app/data/raw /app/data/features /app/data/results
+mkdir -p /app/logs /app/models /app/data/processed /app/data/raw /app/data/features
 
 # Check nginx configuration
 echo "🔍 Checking nginx configuration..."
