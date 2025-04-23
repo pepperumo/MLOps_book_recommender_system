@@ -4,14 +4,21 @@ set -euo pipefail  # Better error handling
 echo "🚀 Starting DVC container..."
 
 ########################################
-# GitHub – HTTPS + Personal-Access Token
+# GitHub – Personal Access Token Authentication
 ########################################
-# Works for both classic and fine-grained PATs.
+# Using GitHub's recommended approach for token auth
 
-if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_USER_NAME:-}" ]]; then
-  git config --global url."https://${GIT_USER_NAME}:${GITHUB_TOKEN}@github.com/".insteadOf \
-                       "https://github.com/"
-  echo "🔧 GitHub token authentication configured."
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  # Create token helper file
+  echo "protocol=https
+host=github.com
+username=${GIT_USER_NAME:-pepperumo}
+password=${GITHUB_TOKEN}" > ~/.git-credentials
+  chmod 600 ~/.git-credentials
+  
+  # Configure Git to use the credentials
+  git config --global credential.helper 'store --file ~/.git-credentials'
+  echo "🔧 GitHub token authentication configured using credential store."
 fi
 
 # Create directories if they don't exist
