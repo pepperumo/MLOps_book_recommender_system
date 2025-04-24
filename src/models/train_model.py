@@ -446,14 +446,13 @@ def train_model(config_path="config/model_params.yaml", model_version="collabora
             "model_version": model_version,
             "config_file": config_path
         })
-        
         collaborative_model.fit(config_path=config_path)
         
         # Save the trained model
-        # Convert relative path to absolute path using project_root
-        abs_output_dir = os.path.join(project_root, output_dir)
-        os.makedirs(abs_output_dir, exist_ok=True)
-        model_path = os.path.join(abs_output_dir, f'{model_version}.pkl')
+        # Use a relative path instead of an absolute path to avoid permission issues
+        model_dir = "models"
+        os.makedirs(model_dir, exist_ok=True)
+        model_path = os.path.join(model_dir, f'{model_version}.pkl')
         
         logger.info(f"Saving trained model to {model_path}")
         collaborative_model.save(model_path)

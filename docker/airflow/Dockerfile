@@ -19,8 +19,8 @@ RUN apt-get update && \
 USER airflow
 
 # Install Python dependencies
-COPY docker/airflow/requirements.airflow.txt /tmp/
-RUN pip install --no-cache-dir -r /tmp/requirements.airflow.txt
+COPY docker/airflow/requirements.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Set work directory
 WORKDIR /opt/airflow

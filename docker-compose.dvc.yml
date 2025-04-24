@@ -28,7 +28,7 @@ services:
       PYTHONUNBUFFERED: "1"
       PYTHONPATH:      "/app"
     # Keep container running for debugging
-    command: ["keep-alive"]
+    # command: ["keep-alive"]
     networks:
       - mlops-network
 

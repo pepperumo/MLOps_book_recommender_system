@@ -99,64 +99,12 @@ with DAG(
     evaluate_model = BashOperator(
         task_id='evaluate_model',
         bash_command='cd /opt/airflow && python -m src.models.evaluate_model --model-path models/collaborative.pkl',
-    )
+    )   
 
-    # Task 6: Push metrics to Prometheus
-    def push_metrics_to_prometheus():
-        """Push model evaluation metrics to Prometheus Pushgateway"""
-        try:
-            # Since we no longer save evaluation results, we'll skip this step
-            print("Skipping evaluation metrics push as we no longer save evaluation results")
-            return
-            
-            # Old code for reference:
-            # results_path = '/opt/airflow/data/results/evaluation_results.csv'
-            # if not os.path.exists(results_path):
-            #     print(f"Error: Results file {results_path} not found")
-            #     return
-
-            # Parse the CSV to get actual metrics
-            # results_df = pd.read_csv(results_path, index_col=0)
-            
-            # Get the metrics for the collaborative model
-            if 'collaborative' in results_df.index:
-                model_metrics = results_df.loc['collaborative'].to_dict()
-            else:
-                model_metrics = results_df.iloc[0].to_dict()
-            
-            # Push metrics to Prometheus Pushgateway
-            pushgateway_url = 'http://pushgateway:9091'
-            job_name = 'book_recommender_model'
-            
-            # Format metrics for Prometheus
-            metrics_data = ""
-            for metric_name, metric_value in model_metrics.items():
-                # Convert metrics like 'precision@10' to 'book_recommender_precision_at_10'
-                formatted_name = metric_name.replace('@', '_at_')
-                metrics_data += f"book_recommender_{formatted_name} {metric_value}\n"
-            
-            # Push to Pushgateway
-            response = requests.post(
-                f"{pushgateway_url}/metrics/job/{job_name}",
-                data=metrics_data
-            )
-            
-            print(f"Pushed metrics to Prometheus Pushgateway: {response.status_code}")
-            print(f"Metrics sent: {model_metrics}")
-        except Exception as e:
-            print(f"Error pushing metrics to Prometheus: {str(e)}")
-            import traceback
-            print(traceback.format_exc())
-
-    push_metrics = PythonOperator(
-        task_id='push_metrics',
-        python_callable=push_metrics_to_prometheus,
-    )
-
+    
     # Define task dependencies
     retrieve_data >> process_data >> build_features >> train_model
     # after training, kick off evaluation and API tests in parallel
     train_model >> evaluate_model
+    # API testing flow with metrics pushed BEFORE stopping the API
     train_model >> start_api >> wait_api >> run_api_tests >> stop_api
-    # both branches converge to push_metrics
-    [evaluate_model, stop_api] >> push_metrics
