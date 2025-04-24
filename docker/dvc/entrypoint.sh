@@ -109,19 +109,27 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   git add -A
   git commit -m "📊 Sync DVC artefacts $(date +%F)" || echo "ℹ️  Nothing to commit"
   
-  # Use SSH for GitHub connection if available
-  if [[ -f "/root/.ssh/id_rsa" || -f "/root/.ssh/id_ed25519" ]]; then
-    echo "🔑 Using SSH for GitHub authentication"    # Make sure SSH key permissions are correct
-    chmod 600 /root/.ssh/id_*
-    # Add GitHub to known hosts to avoid prompt
-    ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
-    # Set Git remote to SSH URL
-    git remote set-url origin "git@github.com:pepperumo/MLOps_book_recommender_system.git"
-    # Push using SSH
-    git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check SSH setup"
+  # Check if we have HTTPS authentication configured with token
+  if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
+    echo "🔑 Using HTTPS with token for GitHub authentication"
+    # Push using HTTPS with token (already configured earlier)
+    git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check GitHub token"
   else
-    echo "⚠️ No SSH keys found - skipping Git push"
-    echo "Please set up SSH authentication for GitHub"
+    # Fallback to SSH if HTTPS is not configured
+    if [[ -f "/root/.ssh/id_rsa" || -f "/root/.ssh/id_ed25519" ]]; then
+      echo "🔑 Using SSH for GitHub authentication"
+      # Make sure SSH key permissions are correct
+      chmod 600 /root/.ssh/id_*
+      # Add GitHub to known hosts to avoid prompt
+      ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
+      # Set Git remote to SSH URL
+      git remote set-url origin "git@github.com:pepperumo/MLOps_book_recommender_system.git"
+      # Push using SSH
+      git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check SSH setup"
+    else
+      echo "⚠️ No authentication method available - skipping Git push"
+      echo "Please set up either HTTPS token or SSH authentication for GitHub"
+    fi
   fi
 else
   echo "⏩ Git push skipped."
