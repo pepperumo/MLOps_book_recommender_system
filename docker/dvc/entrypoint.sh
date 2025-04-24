@@ -4,55 +4,36 @@ set -euo pipefail
 echo "🚀 Starting DVC container..."
 
 ########################################
-# SSH key generation and GitHub setup
+# GitHub HTTPS Authentication Setup
 ########################################
-# Generate SSH keys inside the container if they don't exist
+echo "🔐 Setting up GitHub HTTPS authentication..."
 
-# Check volume permissions and content
-echo "📁 Checking SSH directory..."
-ls -la /root
-ls -la /root/.ssh || echo "SSH directory doesn't exist yet"
-
-mkdir -p /root/.ssh
-chmod 700 /root/.ssh
-
-# Debug the contents of the SSH directory
-echo "Files in /root/.ssh after mkdir:"
-ls -la /root/.ssh
-
-# Cache a copy of the key to avoid regeneration
-if [[ -f "/app/.ssh-key-cache/id_ed25519" && ! -f "/root/.ssh/id_ed25519" ]]; then
-  echo "🔄 Restoring SSH key from cache..."
-  mkdir -p /app/.ssh-key-cache
-  cp /app/.ssh-key-cache/id_ed25519* /root/.ssh/
-  chmod 600 /root/.ssh/id_ed25519
-fi
-
-if [[ ! -f "/root/.ssh/id_ed25519" ]]; then
-  echo "🔑 Generating SSH keys inside the container..."
-  # Generate SSH key without passphrase
-  ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N "" -C "pepperumo@gmail.com"
-  chmod 600 /root/.ssh/id_ed25519
+# Configure Git to use the provided token for HTTPS authentication
+if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
+  # Extract the GitHub domain from the HTTPS URL
+  GITHUB_DOMAIN=$(echo "${GIT_HTTPS_URL}" | sed -E 's|https://([^/]+)/.*|\1|')
   
-  # Cache the key in the project directory for persistence
-  mkdir -p /app/.ssh-key-cache
-  cp /root/.ssh/id_ed25519* /app/.ssh-key-cache/
-  chmod 600 /app/.ssh-key-cache/id_ed25519
+  # Configure Git credential helper to store credentials in memory
+  git config --global credential.helper store
   
-  # Display the public key for manual addition to GitHub
-  echo "⚠️ IMPORTANT: Add this SSH public key to your GitHub account:"
-  echo "===================="
-  cat /root/.ssh/id_ed25519.pub
-  echo "===================="
-  echo "Then run the container again."
+  # Create a .netrc file with the GitHub token
+  echo "machine ${GITHUB_DOMAIN}" > /root/.netrc
+  echo "login ${GIT_USER_NAME:-pepperumo}" >> /root/.netrc
+  echo "password ${GITHUB_TOKEN}" >> /root/.netrc
+  chmod 600 /root/.netrc
+  
+  echo "✅ GitHub HTTPS authentication configured with token"
+  
+  # Update the origin remote to use HTTPS if it's currently using SSH
+  CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
+  if [[ "${CURRENT_REMOTE}" == git@* ]]; then
+    echo "🔄 Updating Git remote from SSH to HTTPS..."
+    git remote set-url origin "${GIT_HTTPS_URL}"
+    echo "✅ Git remote updated to HTTPS: ${GIT_HTTPS_URL}"
+  fi
 else
-  echo "✅ Existing SSH key found at /root/.ssh/id_ed25519"
-  echo "Public key fingerprint:"
-  ssh-keygen -lf /root/.ssh/id_ed25519.pub
+  echo "⚠️ GitHub token or HTTPS URL not provided. HTTPS authentication may not work."
 fi
-
-# Add GitHub to known hosts to avoid prompt
-ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
 
 ########################################
 # Workspace housekeeping
