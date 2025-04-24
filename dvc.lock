@@ -11,17 +11,17 @@ stages:
     outs:
     - path: data/raw
       hash: md5
-      md5: f1b1ecc963b47e81ad2aed6c4dce26b3.dir
-      size: 8501770
-      nfiles: 2
+      md5: 5b83cf1204001758a146e2f78537df68.dir
+      size: 8458311
+      nfiles: 3
   process_data:
     cmd: python -m src.data.process_data
     deps:
     - path: data/raw
       hash: md5
-      md5: f1b1ecc963b47e81ad2aed6c4dce26b3.dir
-      size: 8501770
-      nfiles: 2
+      md5: 5b83cf1204001758a146e2f78537df68.dir
+      size: 8458311
+      nfiles: 3
     - path: src/data/process_data.py
       hash: md5
       md5: e6b081ba59303b5ebc2b62974f471c47
@@ -30,16 +30,16 @@ stages:
     outs:
     - path: data/processed
       hash: md5
-      md5: ae8de4ca6665597c619771e157bb3f7f.dir
-      size: 1106552511
+      md5: 462f3508969709c91b3735e545105999.dir
+      size: 1096117672
       nfiles: 7
   build_features:
     cmd: python -m src.features.build_features
     deps:
     - path: data/processed
       hash: md5
-      md5: ae8de4ca6665597c619771e157bb3f7f.dir
-      size: 1106552511
+      md5: 462f3508969709c91b3735e545105999.dir
+      size: 1096117672
       nfiles: 7
     - path: src/features/build_features.py
       hash: md5
@@ -49,8 +49,8 @@ stages:
     outs:
     - path: data/features
       hash: md5
-      md5: 26f6594ae7ba56206386de4938ff90fa.dir
-      size: 673927
+      md5: 422ba7fba8dab4847b7b1eee00e9c638.dir
+      size: 673445
       nfiles: 4
   train_model:
     cmd: python -m src.models.train_model --config config/model_params.yaml
@@ -62,23 +62,23 @@ stages:
       isexec: true
     - path: data/features
       hash: md5
-      md5: 26f6594ae7ba56206386de4938ff90fa.dir
-      size: 673927
+      md5: 422ba7fba8dab4847b7b1eee00e9c638.dir
+      size: 673445
       nfiles: 4
     - path: src/models/train_model.py
       hash: md5
-      md5: f81f6afeb243d49c29e57f5f7d7a54d6
-      size: 22682
+      md5: 2d7a2468898b8bb2f38df0006c7b0ba2
+      size: 22644
       isexec: true
     outs:
     - path: models/collaborative.pkl
       hash: md5
-      md5: b002430031fc97a2cbb2105fef27ae2c
-      size: 15286590
+      md5: 4e16f25aa436397f6fc74ab8d0c201a9
+      size: 15247853
       isexec: true
     - path: models/collaborative_config.json
       hash: md5
-      md5: 3736ff196c74671051d871e675b1c4c0
+      md5: 9dac0c213f5ca6775f6347cca2567350
       size: 403
       isexec: true
   evaluate_model:
