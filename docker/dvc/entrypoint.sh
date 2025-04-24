@@ -25,13 +25,7 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   
   echo "✅ GitHub HTTPS authentication configured with token"
   
-  # Update the origin remote to use HTTPS if it's currently using SSH
-  CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-  if [[ "${CURRENT_REMOTE}" != "${GITHUB_URL}" ]]; then
-    echo "🔄 Setting Git remote to HTTPS..."
-    git remote set-url origin "${GITHUB_URL}"
-    echo "✅ Git remote set to HTTPS: ${GITHUB_URL}"
-  fi
+
 else
   echo "⚠️ GitHub token not provided. HTTPS authentication may not work."
 fi
@@ -110,35 +104,29 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   git add -A
   git commit -m "📊 Sync DVC artefacts $(date +%F)" || echo "ℹ️  Nothing to commit"
   
-  # Check if we have HTTPS authentication configured with token
-  if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
+  # Use HTTPS with token authentication
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     echo "🔑 Using HTTPS with token for GitHub authentication"
     
-    # Clean up the URL by removing any escape sequences and explicitly set it again
-    CLEAN_URL=$(echo "${GIT_HTTPS_URL}" | sed 's/\\x3a/:/g')
-    git remote set-url origin "${CLEAN_URL}"
+    # Hardcode the correct GitHub URL
+    GITHUB_URL="https://github.com/pepperumo/MLOps_book_recommender_system.git"
     
-    # Debug output
-    echo "📌 Using Git remote URL: ${CLEAN_URL}"
+    # Create a URL with embedded credentials
+    AUTH_URL="https://${GIT_USER_NAME:-pepperumo}:${GITHUB_TOKEN}@github.com/pepperumo/MLOps_book_recommender_system.git"
     
-    # Push using HTTPS with token (already configured earlier)
+    # Set the remote with embedded credentials for this push
+    git remote set-url origin "${AUTH_URL}"
+    
+    echo "📌 Pushing to GitHub using HTTPS authentication"
+    
+    # Push using HTTPS with embedded token
     git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check GitHub token"
+    
+    # Reset to the clean URL without credentials for security
+    git remote set-url origin "${GITHUB_URL}"
   else
-    # Fallback to SSH if HTTPS is not configured
-    if [[ -f "/root/.ssh/id_rsa" || -f "/root/.ssh/id_ed25519" ]]; then
-      echo "🔑 Using SSH for GitHub authentication"
-      # Make sure SSH key permissions are correct
-      chmod 600 /root/.ssh/id_*
-      # Add GitHub to known hosts to avoid prompt
-      ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
-      # Set Git remote to SSH URL
-      git remote set-url origin "git@github.com:pepperumo/MLOps_book_recommender_system.git"
-      # Push using SSH
-      git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check SSH setup"
-    else
-      echo "⚠️ No authentication method available - skipping Git push"
-      echo "Please set up either HTTPS token or SSH authentication for GitHub"
-    fi
+    echo "⚠️ No GitHub token available - skipping Git push"
+    echo "Please set the GITHUB_TOKEN environment variable"
   fi
 else
   echo "⏩ Git push skipped."
