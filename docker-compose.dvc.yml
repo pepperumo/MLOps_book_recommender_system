@@ -7,7 +7,7 @@ services:
       dockerfile: docker/dvc/Dockerfile    
     volumes:
       - .:/app                       # project
-      - dvc-ssh-keys:/root/.ssh      # persist SSH keys between runs
+      - ${HOME}/.ssh:/root/.ssh      # use local SSH keys instead of volume
     env_file:
       - .env                         # secrets & CI vars live here
     environment:
@@ -36,6 +36,4 @@ networks:
   mlops-network:
     driver: bridge
 
-volumes:
-  dvc-ssh-keys:
-    # This volume will persist SSH keys between container runs
+# Volume definition removed as we're using local SSH keys
