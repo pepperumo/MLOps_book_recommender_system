@@ -10,8 +10,11 @@ echo "🔐 Setting up GitHub HTTPS authentication..."
 
 # Configure Git to use the provided token for HTTPS authentication
 if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
+  # Clean up the URL by removing any escape sequences
+  CLEAN_URL=$(echo "${GIT_HTTPS_URL}" | sed 's/\\x3a/:/g')
+  
   # Extract the GitHub domain from the HTTPS URL
-  GITHUB_DOMAIN=$(echo "${GIT_HTTPS_URL}" | sed -E 's|https://([^/]+)/.*|\1|')
+  GITHUB_DOMAIN=$(echo "${CLEAN_URL}" | sed -E 's|https://([^/]+)/.*|\1|')
   
   # Configure Git credential helper to store credentials in memory
   git config --global credential.helper store
@@ -28,8 +31,8 @@ if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
   CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
   if [[ "${CURRENT_REMOTE}" == git@* ]]; then
     echo "🔄 Updating Git remote from SSH to HTTPS..."
-    git remote set-url origin "${GIT_HTTPS_URL}"
-    echo "✅ Git remote updated to HTTPS: ${GIT_HTTPS_URL}"
+    git remote set-url origin "${CLEAN_URL}"
+    echo "✅ Git remote updated to HTTPS: ${CLEAN_URL}"
   fi
 else
   echo "⚠️ GitHub token or HTTPS URL not provided. HTTPS authentication may not work."
