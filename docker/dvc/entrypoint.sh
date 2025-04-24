@@ -9,12 +9,10 @@ echo "🚀 Starting DVC container..."
 echo "🔐 Setting up GitHub HTTPS authentication..."
 
 # Configure Git to use the provided token for HTTPS authentication
-if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
-  # Clean up the URL by removing any escape sequences
-  CLEAN_URL=$(echo "${GIT_HTTPS_URL}" | sed 's/\\x3a/:/g')
-  
-  # Extract the GitHub domain from the HTTPS URL
-  GITHUB_DOMAIN=$(echo "${CLEAN_URL}" | sed -E 's|https://([^/]+)/.*|\1|')
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  # Hardcode the correct GitHub URL directly in the script
+  GITHUB_URL="https://github.com/pepperumo/MLOps_book_recommender_system.git"
+  GITHUB_DOMAIN="github.com"
   
   # Configure Git credential helper to store credentials in memory
   git config --global credential.helper store
@@ -29,13 +27,13 @@ if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
   
   # Update the origin remote to use HTTPS if it's currently using SSH
   CURRENT_REMOTE=$(git remote get-url origin 2>/dev/null || echo "")
-  if [[ "${CURRENT_REMOTE}" == git@* ]]; then
-    echo "🔄 Updating Git remote from SSH to HTTPS..."
-    git remote set-url origin "${CLEAN_URL}"
-    echo "✅ Git remote updated to HTTPS: ${CLEAN_URL}"
+  if [[ "${CURRENT_REMOTE}" != "${GITHUB_URL}" ]]; then
+    echo "🔄 Setting Git remote to HTTPS..."
+    git remote set-url origin "${GITHUB_URL}"
+    echo "✅ Git remote set to HTTPS: ${GITHUB_URL}"
   fi
 else
-  echo "⚠️ GitHub token or HTTPS URL not provided. HTTPS authentication may not work."
+  echo "⚠️ GitHub token not provided. HTTPS authentication may not work."
 fi
 
 ########################################
@@ -115,6 +113,14 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   # Check if we have HTTPS authentication configured with token
   if [[ -n "${GITHUB_TOKEN:-}" && -n "${GIT_HTTPS_URL:-}" ]]; then
     echo "🔑 Using HTTPS with token for GitHub authentication"
+    
+    # Clean up the URL by removing any escape sequences and explicitly set it again
+    CLEAN_URL=$(echo "${GIT_HTTPS_URL}" | sed 's/\\x3a/:/g')
+    git remote set-url origin "${CLEAN_URL}"
+    
+    # Debug output
+    echo "📌 Using Git remote URL: ${CLEAN_URL}"
+    
     # Push using HTTPS with token (already configured earlier)
     git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check GitHub token"
   else
