@@ -108,22 +108,24 @@ if [[ "${SKIP_GIT_PUSH:-false}" != "true" ]]; then
   if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     echo "🔑 Using HTTPS with token for GitHub authentication"
     
-    # Hardcode the correct GitHub URL
+    # Set up Git credentials using the GitHub token in the correct format
     GITHUB_URL="https://github.com/pepperumo/MLOps_book_recommender_system.git"
     
-    # Create a URL with embedded credentials
-    AUTH_URL="https://${GIT_USER_NAME:-pepperumo}:${GITHUB_TOKEN}@github.com/pepperumo/MLOps_book_recommender_system.git"
+    # Properly configure Git to use the token
+    git config --global credential.helper 'store --file=/tmp/git-credentials'
+    echo "https://${GITHUB_TOKEN}:x-oauth-basic@github.com" > /tmp/git-credentials
+    chmod 600 /tmp/git-credentials
     
-    # Set the remote with embedded credentials for this push
-    git remote set-url origin "${AUTH_URL}"
+    # Set the remote URL (without credentials embedded)
+    git remote set-url origin "${GITHUB_URL}"
     
-    echo "📌 Pushing to GitHub using HTTPS authentication"
+    echo "📌 Pushing to GitHub using HTTPS authentication with token"
     
-    # Push using HTTPS with embedded token
+    # Push using the stored credentials
     git push origin "${GIT_BRANCH:-master}" || echo "⚠️  Git push failed - check GitHub token"
     
-    # Reset to the clean URL without credentials for security
-    git remote set-url origin "${GITHUB_URL}"
+    # Clean up credentials
+    rm -f /tmp/git-credentials
   else
     echo "⚠️ No GitHub token available - skipping Git push"
     echo "Please set the GITHUB_TOKEN environment variable"
