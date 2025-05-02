@@ -1,8 +1,8 @@
 FROM python:3.10-slim
 
-# System deps
+# System deps - removed Git and SSH, kept only essential packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git openssh-client dos2unix curl \
+    dos2unix curl \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -6,38 +6,25 @@ services:
       context: .
       dockerfile: docker/dvc/Dockerfile    
     volumes:
-      - .:/app                       # project
+      - .:/app                      
     env_file:
-      - .env                         # secrets & CI vars live here
+      - .env                        
     environment:
-      # Git configuration - needed for commits
-      GIT_USER_NAME:  "${GIT_USER_NAME:-pepperumo}"
-      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-pepperumo@gmail.com}"
-      GIT_BRANCH:     "${GIT_BRANCH:-master}"
-      # GitHub HTTPS authentication
-      GIT_HTTPS_URL:  "${GIT_HTTPS_URL}"
-      GITHUB_TOKEN:   "${GITHUB_TOKEN}"
-      # DVC settings
+      # DVC settings only
       DVC_REMOTE:     "${DVC_REMOTE:-origin}"
       # DAGsHub credentials
       DAGSHUB_USER:   "${DAGSHUB_USER}"
       DAGSHUB_TOKEN:  "${DAGSHUB_TOKEN}"
       # Process options
-      SKIP_GIT_PUSH:      "${SKIP_GIT_PUSH:-true}"
       SKIP_TRAINING_WAIT: "${SKIP_TRAINING_WAIT:-true}"
-      COMMIT_ALL_CHANGES: "${COMMIT_ALL_CHANGES:-true}"
       # Python settings
       PYTHONUNBUFFERED: "1"
       PYTHONPATH:      "/app"
     # Keep container running for debugging
-    # command: ["keep-alive"]
+    
     networks:
       - mlops-network
 
 networks:
   mlops-network:
     driver: bridge
-
-volumes:
-  dvc-ssh-keys:
-    # This volume will persist SSH keys between container runs

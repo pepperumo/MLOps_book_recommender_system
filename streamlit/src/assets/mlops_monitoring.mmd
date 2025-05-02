@@ -1,0 +1,58 @@
+---
+title: Monitoring & Observability
+---
+flowchart LR
+    %% Monitored Components
+    subgraph Components["Monitored Components"]
+        direction TB
+        FastAPI["FastAPI Service"]
+        ModelRegistry["Model Registry"]
+        DockerContainers["Docker Containers"]
+    end
+
+    %% Metrics Collection
+    subgraph MetricsCollection["Metrics Collection"]
+        direction TB
+        PrecisionMetric["Precision@k"]
+        RecallMetric["Recall@k"]
+        ModelLoadTime["Model Load Time"]
+        RecommendationCount["Recommendation Count"]
+        HealthCheck["API Health Check"]
+    end 
+
+    %% Monitoring Infrastructure
+    subgraph MonitoringInfra["Monitoring Infrastructure"]
+        direction TB
+        Prometheus["Prometheus"]
+        Pushgateway["Prometheus Pushgateway"]
+        Grafana["Grafana Dashboards"]
+    end
+
+    %% Component to metrics relationships
+    FastAPI -->|generates| RecommendationCount
+    FastAPI -->|provides| HealthCheck
+    ModelRegistry -->|measures| PrecisionMetric
+    ModelRegistry -->|measures| RecallMetric
+    ModelRegistry -->|measures| ModelLoadTime
+
+    %% Prometheus, Pushgateway & Grafana
+    MetricsCollection -->|pushes batch metrics| Pushgateway
+    Pushgateway -->|forwards| Prometheus
+    MetricsCollection -->|scrapes real-time| Prometheus
+    Prometheus -->|visualizes| Grafana
+    
+    %% Docker Compose
+    DockerComposeMonitoring["Docker Compose Monitoring"]
+    DockerComposeMonitoring -->|configures| MonitoringInfra
+
+    %% Styling
+    classDef components fill:#6baed6,stroke:#2171b5,stroke-width:2px,color:white
+    classDef metrics fill:#1a9850,stroke:#0d5e2e,stroke-width:2px,color:white
+    classDef monitoring fill:#d62728,stroke:#a50f15,stroke-width:2px,color:white
+    classDef orchestration fill:#31a354,stroke:#006d2c,stroke-width:2px,color:white
+
+    %% Apply styles
+    class FastAPI,ModelRegistry,DockerContainers components
+    class PrecisionMetric,RecallMetric,ModelLoadTime,RecommendationCount,HealthCheck metrics
+    class Prometheus,Pushgateway,Grafana monitoring
+    class DockerComposeMonitoring orchestration

@@ -50,16 +50,6 @@ flowchart LR
         MonitoringDAG["Monitoring DAG"]
     end
 
-    subgraph Containers["Docker Containers"]
-        direction TB
-        DataRetrieval["Data Retrieval"]
-        DataIngestion["Data Ingestion"]
-        ModelTraining["Model Training"]
-        APIContainer["API Service"]
-        ReactContainer["Frontend"]
-        DVCContainer["DVC"]
-    end
-
     subgraph Monitoring["Monitoring & Observability"]
         direction LR
         Prometheus["Prometheus"]
@@ -102,15 +92,8 @@ flowchart LR
     PipelineDAG -->|validates| APITests
     
     %% Monitoring DAG connections
-    MonitoringDAG -->|monitors| APIContainer
     MonitoringDAG -->|tracks| ModelRegistry
     MonitoringDAG -->|collects metrics| Metrics
-
-    %% Container connections
-    Containers -->|support| DataLayer
-    Containers -->|support| ModelLayer
-    Containers -->|support| APILayer
-    Containers -->|support| UILayer
 
     %% Monitoring relationships
     APIEndpoints -->|emit metrics| Metrics
@@ -126,7 +109,6 @@ flowchart LR
     classDef ui fill:#3182bd,stroke:#08519c,stroke-width:2px,color:white
     classDef cicd fill:#e377c2,stroke:#c51b8a,stroke-width:2px,color:white
     classDef airflow fill:#20c997,stroke:#138570,stroke-width:2px,color:white
-    classDef containers fill:#1f77b4,stroke:#145885,stroke-width:2px,color:white
     classDef monitoring fill:#d62728,stroke:#a50f15,stroke-width:2px,color:white
 
     %% Apply styles
@@ -136,5 +118,4 @@ flowchart LR
     class React,UserInterface,Recommendations ui
     class GitHubActions,DVCPush,APITest cicd
     class AirflowCoordination,PipelineDAG,MonitoringDAG airflow
-    class DataRetrieval,DataIngestion,ModelTraining,APIContainer,ReactContainer,DVCContainer containers
     class Prometheus,Grafana,Pushgateway,Metrics monitoring

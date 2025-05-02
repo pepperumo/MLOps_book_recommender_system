@@ -1,9 +1,6 @@
-streamlit>=1.30.0
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.2.0
-scipy>=1.10.0
-matplotlib>=3.6.0
-altair>=4.0.0
-watchdog>=2.0.0
-pillow>=9.0.0
+altair
+pandas
+streamlit
+pillow
+numpy
+matplotlib

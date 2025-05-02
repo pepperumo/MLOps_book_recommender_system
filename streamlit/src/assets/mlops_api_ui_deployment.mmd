@@ -1,0 +1,85 @@
+---
+title: API Services & User Interface
+---
+flowchart LR
+    %% API Services and User Interface Pipeline
+    %% This diagram focuses on the serving and frontend aspects of the MLOps architecture
+
+    %% Model Registry and Serving
+    subgraph ModelServingLayer["Model Registry & Serving"]
+        direction TB
+        ModelRegistry[("Model Registry")]
+        ModelServing["Model Serving"]
+    end
+
+    %% API Services
+    subgraph APILayer["API Services"]
+        direction TB
+        FastAPI["FastAPI"]
+        APIEndpoints["API Endpoints"]
+        APITests["API Tests"]
+    end
+
+    %% User Interface
+    subgraph UILayer["User Interface"]
+        direction TB
+        React["React Frontend"]
+        UserInterface["Interactive UI"]
+        Recommendations["Book Recommendations"]
+    end
+
+    %% Containers for Deployment
+    subgraph DeploymentContainers["Deployment Containers"]
+        direction TB
+        APIContainer["API Container"]
+        ReactContainer["Frontend Container"]
+    end
+
+    %% CI/CD for API and UI
+    subgraph CICD["CI/CD Pipeline"]
+        direction TB
+        GitHubActions["GitHub Actions"]
+        APITestWorkflow["API Test Workflow"]
+    end
+
+    %% Relationships
+    ModelRegistry -->|loaded by| ModelServing
+    ModelServing -->|powers| APIEndpoints
+    FastAPI -->|hosts| APIEndpoints
+    APIEndpoints -->|validated by| APITests
+    APIEndpoints -->|consumed by| React
+    React -->|renders| UserInterface
+    UserInterface -->|displays| Recommendations
+
+    %% Container relationships
+    APIContainer -->|serves| FastAPI
+    ReactContainer -->|hosts| React
+
+    %% CI/CD relationships
+    GitHubActions -->|runs| APITestWorkflow
+    APITestWorkflow -->|validates| APIEndpoints
+
+    %% Docker Compose for deployment
+    DockerCompose["DockerCompose_deployment"]
+    DockerCompose -->|orchestrates| APIContainer
+    DockerCompose -->|orchestrates| ReactContainer
+
+    %% Pipeline DAG relationship to API testing
+    PipelineDAG["ML Pipeline DAG"]
+    PipelineDAG -->|includes| APITests
+
+    %% Styling
+    classDef model fill:#e6550d,stroke:#a63603,stroke-width:2px,color:white
+    classDef api fill:#6a51a3,stroke:#54278f,stroke-width:2px,color:white
+    classDef ui fill:#3182bd,stroke:#08519c,stroke-width:2px,color:white
+    classDef containers fill:#1f77b4,stroke:#145885,stroke-width:2px,color:white
+    classDef cicd fill:#9467bd,stroke:#7b3ab7,stroke-width:2px,color:white
+    classDef orchestration fill:#2ca02c,stroke:#217821,stroke-width:2px,color:white
+
+    %% Apply styles
+    class ModelRegistry,ModelServing model
+    class FastAPI,APIEndpoints,APITests api
+    class React,UserInterface,Recommendations ui
+    class APIContainer,ReactContainer containers
+    class GitHubActions,APITestWorkflow cicd
+    class DockerCompose,PipelineDAG orchestration

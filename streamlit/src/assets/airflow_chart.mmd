@@ -1,0 +1,19 @@
+flowchart LR
+    retrieve_data["Data Retrieval (BashOperator)"] --> process_data["Data Processing (BashOperator)"]
+    process_data --> build_features["Feature Building (BashOperator)"]
+    build_features --> train_model["Model Training (BashOperator)"]
+    train_model --> evaluate_model["Model Evaluation (BashOperator)"]
+    train_model --> start_api["Start API (BashOperator)"]
+    start_api --> wait_api["Wait for API (BashOperator)"]
+    wait_api --> run_api_tests["Run API Tests (BashOperator)"]
+    run_api_tests --> stop_api["Stop API (BashOperator)"]
+    
+    classDef data fill:#c2e0c6,stroke:#0a3622,color:black;
+    classDef features fill:#d1c2e0,stroke:#3b0a36,color:black;
+    classDef model fill:#e0c2c2,stroke:#360a0a,color:black;
+    classDef api fill:#c2d1e0,stroke:#0a1e36,color:black;
+    
+    class retrieve_data,process_data data;
+    class build_features features;
+    class train_model,evaluate_model model;
+    class start_api,wait_api,run_api_tests,stop_api api;

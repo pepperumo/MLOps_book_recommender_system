@@ -1,0 +1,121 @@
+flowchart LR
+    %% MLOps Architecture for Book Recommender System
+    %% Based on actual tools used in the codebase
+
+    %% Main Components Definition
+    subgraph DataLayer["Data Management"]
+        direction TB
+        RawData[("Raw Book Data")]
+        ProcessedData[("Processed Data")]
+        FeatureData[("Feature Matrices")]
+        DVC["DVC - Data Versioning"]
+        DAGsHub["DAGsHub"]
+    end
+
+    subgraph ModelLayer["Model Development"]
+        direction TB
+        FeatureEng["Feature Engineering"]
+        Training["Model Training"]
+        MLflow["MLflow - Experiment Tracking"]
+        ModelRegistry[("Model Registry")]
+        Evaluation["Model Evaluation"]
+    end
+
+    subgraph APILayer["API Services"]
+        direction TB
+        FastAPI["FastAPI"]
+        ModelServing["Model Serving"]
+        APIEndpoints["API Endpoints"]
+        APITests["API Tests"]
+    end
+
+    subgraph UILayer["User Interface"]
+        direction TB
+        React["React Frontend"]
+        UserInterface["Interactive UI"]
+        Recommendations["Book Recommendations"]
+    end
+
+    subgraph CILayer["CI/CD"]
+        direction TB
+        GitHubActions["GitHub Actions"]
+        DVCPush["DVC Push Workflow"]
+        APITest["API Test Workflow"]
+    end
+
+    subgraph AirflowLayer["Workflow Orchestration"]
+        direction TB
+        AirflowCoordination["Airflow Coordination"]
+        PipelineDAG["ML Pipeline DAG"]
+        MonitoringDAG["Monitoring DAG"]
+    end
+
+    subgraph Monitoring["Monitoring & Observability"]
+        direction LR
+        Prometheus["Prometheus"]
+        Grafana["Grafana Dashboards"]
+        Pushgateway["Pushgateway"]
+        Metrics["Metrics Collection"]
+    end
+
+    %% Data flow relationships
+    RawData -->|versioned| DVC
+    DVC -->|syncs with| DAGsHub
+    DVC -->|provides| ProcessedData
+    ProcessedData -->|input for| FeatureEng
+    FeatureEng -->|creates| FeatureData
+    FeatureData -->|feeds| Training
+    Training -->|logs metrics| MLflow
+    Training -->|produces| ModelRegistry
+    ModelRegistry -->|evaluated by| Evaluation
+    ModelRegistry -->|loaded by| ModelServing
+    ModelServing -->|powers| APIEndpoints
+    APIEndpoints -->|validated by| APITests
+    FastAPI -->|hosts| APIEndpoints
+    APIEndpoints -->|consumed by| React
+    React -->|renders| UserInterface
+    UserInterface -->|displays| Recommendations
+
+    %% CI/CD relationships
+    GitHubActions -->|triggers| DVCPush
+    GitHubActions -->|runs| APITest
+    DVCPush -->|updates| DAGsHub
+    APITest -->|validates| APIEndpoints
+
+    %% Simplified Airflow orchestration
+    AirflowCoordination -->|manages| PipelineDAG
+    AirflowCoordination -->|manages| MonitoringDAG
+    
+    %% Pipeline DAG connections
+    PipelineDAG -->|orchestrates data pipeline| DataLayer
+    PipelineDAG -->|orchestrates modeling| ModelLayer
+    PipelineDAG -->|validates| APITests
+    
+    %% Monitoring DAG connections
+    MonitoringDAG -->|tracks| ModelRegistry
+    MonitoringDAG -->|collects metrics| Metrics
+
+    %% Monitoring relationships
+    APIEndpoints -->|emit metrics| Metrics
+    Evaluation -->|pushes metrics| Pushgateway
+    Pushgateway -->|forwards to| Prometheus
+    Metrics -->|collected by| Prometheus
+    Prometheus -->|visualized in| Grafana
+
+    %% Styling with distinct colors for each component
+    classDef data fill:#2a9d2a,stroke:#1a661a,stroke-width:2px,color:white
+    classDef model fill:#e6550d,stroke:#a63603,stroke-width:2px,color:white
+    classDef api fill:#6a51a3,stroke:#54278f,stroke-width:2px,color:white
+    classDef ui fill:#3182bd,stroke:#08519c,stroke-width:2px,color:white
+    classDef cicd fill:#e377c2,stroke:#c51b8a,stroke-width:2px,color:white
+    classDef airflow fill:#20c997,stroke:#138570,stroke-width:2px,color:white
+    classDef monitoring fill:#d62728,stroke:#a50f15,stroke-width:2px,color:white
+
+    %% Apply styles
+    class RawData,ProcessedData,FeatureData,DVC,DAGsHub data
+    class FeatureEng,Training,MLflow,ModelRegistry,Evaluation model
+    class FastAPI,ModelServing,APIEndpoints,APITests api
+    class React,UserInterface,Recommendations ui
+    class GitHubActions,DVCPush,APITest cicd
+    class AirflowCoordination,PipelineDAG,MonitoringDAG airflow
+    class Prometheus,Grafana,Pushgateway,Metrics monitoring

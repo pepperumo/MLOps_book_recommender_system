@@ -60,7 +60,7 @@ flowchart LR
     APITestWorkflow -->|validates| APIEndpoints
 
     %% Docker Compose for deployment
-    DockerCompose["Docker Compose (deployment)"]
+    DockerCompose["DockerCompose_deployment"]
     DockerCompose -->|orchestrates| APIContainer
     DockerCompose -->|orchestrates| ReactContainer
 
