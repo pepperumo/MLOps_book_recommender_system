@@ -2,6 +2,8 @@
 
 This project is a Book Recommender System using Collaborative Filtering. It's designed with MLOps principles to provide a streamlined, production-ready recommendation system with automated workflows, monitoring, and scalable deployment.
 
+![Frontend Book Interface](graphs/Frontend_book.png)
+
 ## Project Organization
 ------------
 
@@ -795,4 +797,3 @@ The containerized services include:
 - [Grafana Dashboard](http://localhost:3000): Monitoring dashboard (when running)
 - [Airflow UI](http://localhost:8080): Workflow management interface (when running)
 
-<p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
