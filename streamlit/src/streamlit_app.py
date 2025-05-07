@@ -1,4 +1,12 @@
 import streamlit as st
+# Set page configuration must come before any other streamlit commands
+st.set_page_config(
+    page_title="MLOps Book Recommender System",
+    page_icon="📚",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 import pandas as pd
 import os
 import base64
@@ -6,14 +14,10 @@ from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 import altair as alt
+import sys, platform, datetime, time
 
-# Set page configuration
-st.set_page_config(
-    page_title="MLOps Book Recommender System",
-    page_icon="📚",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Only show version info after page config
+st.write(f"🕒 Rendered at {time.time()} with Streamlit {st.__version__}")
 
 # Function to read and convert mermaid diagrams to HTML
 def render_mermaid(mermaid_file_path):
@@ -99,17 +103,16 @@ st.sidebar.markdown("""
             </div>
         """, unsafe_allow_html=True)
 
-# Project Overview Page
-if selected_page == "Project Overview":
+# Define page functions for each section
+def show_project_overview():
     st.markdown("""
     This interactive app provides an overview of the MLOps Book Recommender System project structure and architecture.
     The actual recommendation system is implemented with a React frontend, while this Streamlit app serves purely as 
     documentation to help understand the project.
     """)
     st.header("Project Overview")
-    
-    # Display frontend overview image
-    st.image(os.path.join(ASSETS_DIR, "Frontend_book.png"), caption="Book Recommender UI", use_container_width=True)
+      # Display frontend overview image
+    st.image(os.path.join(ASSETS_DIR, "Frontend_book.png"), caption="Book Recommender UI", width=800)
     
     # Overview section
     st.markdown("""
@@ -139,11 +142,10 @@ if selected_page == "Project Overview":
         3. Performance testing showed sufficient accuracy with collaborative filtering alone
         4. Simpler architecture leads to easier deployment and maintenance
         """)
-      # Project components visualization
+    
+    # Project components visualization
     st.subheader("Main Components")
-    
-    col1, col2 = st.columns(2)
-    
+    col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("""
         #### Data Components
@@ -151,21 +153,20 @@ if selected_page == "Project Overview":
         - **Data Processing**: Cleans and formats data
         - **Feature Engineering**: Creates model features
         """)
-        
     with col2:
         st.markdown("""
         #### Model Components
         - **Model Training**: Trains the collaborative model
         - **Model Evaluation**: Measures model performance
         - **Model Serving**: Serves recommendations via API
-        """)
-    
-    st.markdown("""
-    #### Infrastructure Components
-    - **CI/CD Pipeline**: Automates testing and deployment
-    - **Monitoring Stack**: Tracks system health and performance
-    - **Docker Containers**: Isolates and packages components
-    """)
+        """) 
+    with col3:
+        st.markdown("""
+        #### Infrastructure Components
+        - **CI/CD Pipeline**: Automates testing and deployment
+        - **Monitoring Stack**: Tracks system health and performance
+        - **Docker Containers**: Isolates and packages components
+        """) 
     
     # Service links
     st.subheader("Service Access")
@@ -191,8 +192,8 @@ if selected_page == "Project Overview":
         - **PushGateway**: [http://localhost:9091](http://localhost:9091)
         """)
 
-# System Architecture Page
-elif selected_page == "System Architecture":
+
+def show_system_architecture():
     st.header("System Architecture")
     
     st.markdown("""
@@ -269,8 +270,8 @@ elif selected_page == "System Architecture":
         - Tracks model drift and data quality issues
         """)
 
-# Data Pipeline Page
-elif selected_page == "Data Pipeline & Model Development":
+
+def show_data_pipeline():
     st.header("Data Pipeline & Model Development")
     
     st.markdown("""
@@ -380,9 +381,9 @@ elif selected_page == "Data Pipeline & Model Development":
     docker-compose -f docker-compose.train.yml up
     ```
     """)
-    
-# DVC Pipeline Page
-elif selected_page == "DVC Pipeline":
+
+
+def show_dvc_pipeline():
     st.header("DVC Pipeline")
     
     st.markdown("""
@@ -391,11 +392,8 @@ elif selected_page == "DVC Pipeline":
     The Book Recommender System uses [DVC](https://dagshub.com/pepperumo/MLOps_book_recommender_system) (Data Version Control) to manage the ML pipeline,
     ensuring reproducibility and tracking of data and models throughout the development process.
     """)
-    
-    # Display the DVC pipeline image
-    st.image(os.path.join(ASSETS_DIR, "dvc.png"), caption="DVC Pipeline Graph", use_container_width=True)
-   
-
+      # Display the DVC pipeline image
+    st.image(os.path.join(ASSETS_DIR, "dvc.png"), caption="DVC Pipeline Graph", width=800)
     
     # DVC Commands
     st.subheader("Running the Pipeline")
@@ -431,9 +429,9 @@ elif selected_page == "DVC Pipeline":
     docker-compose -f docker-compose.dvc.yml up
     ```
     """)
-    
-    # Airflow Pipeline Page
-elif selected_page == "Airflow Pipeline":
+
+
+def show_airflow_pipeline():
     st.header("Airflow Pipeline")
     st.markdown("""
     ### Book Recommender System ML Pipeline
@@ -444,13 +442,11 @@ elif selected_page == "Airflow Pipeline":
     
     # Create a visualization of the DAG workflow
     st.subheader("Pipeline Workflow")
-      # Create columns for better layout
-    col1, col2 = st.columns([2, 1])
-      # Display the Airflow pipeline diagram using mermaid from assets directory
+    # Display the Airflow pipeline diagram using mermaid from assets directory
     mermaid_html = render_mermaid(os.path.join(ASSETS_DIR, "airflow_chart.mmd"))
     st.components.v1.html(mermaid_html, height=300, scrolling=True)
     
-        # Access Info
+    # Access Info
     st.success("""
     **Access Airflow UI**: [http://localhost:8080](http://localhost:8080)  
     Username: admin | Password: admin
@@ -481,25 +477,26 @@ elif selected_page == "Airflow Pipeline":
            - API testing sequence (start → wait → test → stop)
         """)
     with col3:
-            st.markdown("""
-    #### Task Categories:
-    
-    - **Data Tasks** (Green)
-        - Data Retrieval
-        - Data Processing
-    
-    - **Feature Tasks** (Purple)
-        - Feature Building
-    
-    - **Model Tasks** (Red)        - Model Training
-        - Model Evaluation
-    
-    - **API Test Tasks** (Blue)
-        - Start API
-        - Wait for API
-        - Run API Tests
-        - Stop API
-    """)
+        st.markdown("""
+        #### Task Categories:
+        
+        - **Data Tasks** (Green)
+            - Data Retrieval
+            - Data Processing
+        
+        - **Feature Tasks** (Purple)
+            - Feature Building
+        
+        - **Model Tasks** (Red)
+            - Model Training
+            - Model Evaluation
+        
+        - **API Test Tasks** (Blue)
+            - Start API
+            - Wait for API
+            - Run API Tests
+            - Stop API
+        """)
     with col4:
         st.markdown("""
         #### Task Details:
@@ -525,14 +522,16 @@ elif selected_page == "Airflow Pipeline":
     # Username: admin | Password: admin
     ```
     """)
-    # API & UI Deployment Page
-elif selected_page == "API & UI Deployment":
+
+
+def show_api_ui_deployment():
     st.header("API & UI Deployment")
     
     st.markdown("""
     The recommendation system's user-facing components consist of a FastAPI backend 
     and a React frontend. These components are containerized and can be deployed together.
-    """)    # Display the API & UI deployment diagram using mermaid from assets directory
+    """)    
+    # Display the API & UI deployment diagram using mermaid from assets directory
     mermaid_html = render_mermaid(os.path.join(ASSETS_DIR, "mlops_api_ui_deployment.mmd"))
     st.components.v1.html(mermaid_html, height=600, scrolling=False)
     
@@ -568,7 +567,8 @@ elif selected_page == "API & UI Deployment":
         st.markdown("""
         The React frontend provides an interactive user interface with:
         
-        - Dashboard with popular books        - User recommendation page
+        - Dashboard with popular books
+        - User recommendation page
         - Similar books search
         - Book browsing and filtering
         """)
@@ -587,22 +587,21 @@ elif selected_page == "API & UI Deployment":
     # Access the frontend at http://localhost:4000
     ```
     """)
-    
 
-# Monitoring Stack Page
-elif selected_page == "Monitoring Stack":
+
+def show_monitoring_stack():
     st.header("Monitoring & Observability")
     
     st.markdown("""
     The monitoring stack tracks system health, performance, and model metrics 
     to ensure the recommendation system operates optimally.
-    """)    # Display the monitoring diagram using mermaid from assets directory
+    """)    
+    # Display the monitoring diagram using mermaid from assets directory
     mermaid_html = render_mermaid(os.path.join(ASSETS_DIR, "mlops_monitoring.mmd"))
     st.components.v1.html(mermaid_html, height=700, scrolling=False)
-    
-    # Display Grafana dashboard screenshot
+      # Display Grafana dashboard screenshot
     st.subheader("Grafana Dashboard")
-    st.image(os.path.join(ASSETS_DIR, "Grafana_monitoring.png"), caption="Book Recommender System Metrics Dashboard in Grafana", use_container_width=True)
+    st.image(os.path.join(ASSETS_DIR, "Grafana_monitoring.png"), caption="Book Recommender System Metrics Dashboard in Grafana", width=800)
     
     # Access Info
     st.success("""
@@ -611,10 +610,7 @@ elif selected_page == "Monitoring Stack":
     **Access PushGateway**: [http://localhost:9091](http://localhost:9091)
     """)
     
-    
     st.markdown("""
-  
-    
     #### Prometheus
     Collects and stores metrics from various system components.
     
@@ -635,7 +631,6 @@ elif selected_page == "Monitoring Stack":
       - Recommendation count
       - API health check status
       - Request latency
-
     
     ### Monitoring Setup
     
@@ -650,8 +645,8 @@ elif selected_page == "Monitoring Stack":
     ```
     """)
 
-# Future Improvements Page
-elif selected_page == "Future Improvements":
+
+def show_future_improvements():
     st.header("Future Improvements")
     
     st.markdown("""
@@ -675,9 +670,18 @@ elif selected_page == "Future Improvements":
     - **Contextual Recommendations**: Incorporate user preferences, reading patterns, and seasonal trends for more personalized recommendations
     """)
 
-# Footer
-st.markdown("---")
-st.markdown("""
-**MLOps Book Recommender System Documentation App**  
-Created with Streamlit | [GitHub Repository](https://github.com/pepperumo/MLOps_book_recommender_system)
-""")
+# Dictionary to map page names to their respective functions
+page_functions = {
+    "Project Overview": show_project_overview,
+    "System Architecture": show_system_architecture,
+    "Data Pipeline & Model Development": show_data_pipeline,
+    "API & UI Deployment": show_api_ui_deployment,
+    "Monitoring Stack": show_monitoring_stack,
+    "DVC Pipeline": show_dvc_pipeline,
+    "Airflow Pipeline": show_airflow_pipeline,
+    "Future Improvements": show_future_improvements
+}
+
+# Display the selected page
+page_functions[selected_page]()
+

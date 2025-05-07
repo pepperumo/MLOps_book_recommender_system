@@ -488,8 +488,6 @@ flowchart LR
 - **Recommendation Display**: Visual presentation of recommended books
 - **User Interaction**: Rating and feedback mechanisms
 
-![Frontend Book Interface](graphs/Frontend_book.png)
-
 ### 5. Monitoring & Observability
 
 Comprehensive monitoring and observability stack for tracking system performance:
@@ -579,13 +577,6 @@ The project includes two main Airflow DAGs:
 ### 7. CI/CD Pipeline
 
 Continuous Integration and Deployment pipeline for automated testing and deployment:
-
-- **GitHub Actions**: Automated workflows for testing and deployment
-- **Docker Containers**: Isolated environments for each component
-- **Docker Compose**: Multi-container application deployment
-- **Environment Configuration**: Consistent development and production environments
-- **Deployment Automation**: Streamlined deployment process
-
 The project uses GitHub Actions workflows:
 - `api-test.yml`: Runs automated tests for the FastAPI endpoints
 - `dvc-push.yml`: Automatically pushes data and model updates to DAGsHub when DVC files change
