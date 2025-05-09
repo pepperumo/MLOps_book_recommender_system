@@ -14,6 +14,7 @@ import itertools
 import numpy as np
 import click
 from datetime import datetime
+from dotenv import load_dotenv
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -23,8 +24,15 @@ logger = logging.getLogger("retrieve_from_google")
 project_root = Path(__file__).parent.parent.parent.absolute()
 logger.info(f"Project root: {project_root}")
 
+# Load environment variables from .env file
+load_dotenv(project_root / ".env")
+
 # Google Books API constants
-GOOGLE_API_KEY = "AIzaSyAfBBcsfRQWfwSn9csJJjqoCxqPRZmSDOE"
+# Get API key from environment variable or use a placeholder (will fail if not provided)
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    logger.warning("GOOGLE_API_KEY not found in environment variables. Add it to your .env file.")
+    
 BASE_URL = "https://www.googleapis.com/books/v1/volumes"
 BATCH_SIZE = 40  # Google Books API allows up to 40 results per page
 RATE_LIMIT_DELAY = 1  # Seconds to wait between API calls to avoid rate limiting
