@@ -36,37 +36,30 @@ with DAG(
     start_date=datetime(2025, 4, 16),
     catchup=False,
     tags=['mlops', 'recommender', 'books'],
-) as dag:    # Task 1: Data Retrieval
+) as dag:
+
+    # Task 1: Data Retrieval
     retrieve_data = BashOperator(
         task_id='retrieve_data',
         bash_command='cd /opt/airflow && python -m src.data.retrieve_raw_data',
-        env={
-            'GOOGLE_API_KEY': '{{ env.var.GOOGLE_API_KEY }}',
-        },
-    )    # Task 2: Data Processing
+    )
+
+    # Task 2: Data Processing
     process_data = BashOperator(
         task_id='process_data',
         bash_command='cd /opt/airflow && python -m src.data.process_data',
-        env={
-            'GOOGLE_API_KEY': '{{ env.var.GOOGLE_API_KEY }}',
-        },
     )
 
     # Task 3: Feature Building
     build_features = BashOperator(
         task_id='build_features',
         bash_command='cd /opt/airflow && python -m src.features.build_features',
-    )    # Task 4: Model Training
+    )
+
+    # Task 4: Model Training
     train_model = BashOperator(
         task_id='train_model',
         bash_command='cd /opt/airflow && python -m src.models.train_model --config config/model_params.yaml',
-        env={
-            'MLFLOW_TRACKING_URI': '{{ env.var.MLFLOW_TRACKING_URI }}',
-            'MLFLOW_TRACKING_USERNAME': '{{ env.var.MLFLOW_TRACKING_USERNAME }}',
-            'MLFLOW_TRACKING_PASSWORD': '{{ env.var.MLFLOW_TRACKING_PASSWORD }}',
-            'DAGSHUB_USER': '{{ env.var.DAGSHUB_USER }}',
-            'DAGSHUB_TOKEN': '{{ env.var.DAGSHUB_TOKEN }}',
-        },
     )
 
     # ----- API Test Tasks (run in parallel after training) -----
@@ -80,13 +73,13 @@ with DAG(
         sleep 3  # allow server to initialize
         echo "Uvicorn logs:\n" && head -n 20 /tmp/uvicorn.log
         """,
-    )    wait_api = BashOperator(
+    )
+    wait_api = BashOperator(
         task_id='wait_for_api',
         bash_command="""
         until curl -sSf http://127.0.0.1:7860/health; do sleep 2; done
         """,
     )
-    
     run_api_tests = BashOperator(
         task_id='run_api_tests',
         bash_command="""
@@ -95,38 +88,17 @@ with DAG(
         echo "Running API pytest suite against $API_URL (using prefix)"
         python -m pytest /opt/airflow/src/fastAPI/test_api_pytest.py -vv --maxfail=1
         """,
-        env={
-            'GOOGLE_API_KEY': '{{ env.var.GOOGLE_API_KEY }}',
-            'MLFLOW_TRACKING_URI': '{{ env.var.MLFLOW_TRACKING_URI }}',
-            'MLFLOW_TRACKING_USERNAME': '{{ env.var.MLFLOW_TRACKING_USERNAME }}',
-            'MLFLOW_TRACKING_PASSWORD': '{{ env.var.MLFLOW_TRACKING_PASSWORD }}',
-            'DAGSHUB_USER': '{{ env.var.DAGSHUB_USER }}',
-            'DAGSHUB_TOKEN': '{{ env.var.DAGSHUB_TOKEN }}',
-        },
-        env={
-            'GOOGLE_API_KEY': '{{ env.var.GOOGLE_API_KEY }}',
-            'MLFLOW_TRACKING_URI': '{{ env.var.MLFLOW_TRACKING_URI }}',
-            'MLFLOW_TRACKING_USERNAME': '{{ env.var.MLFLOW_TRACKING_USERNAME }}',
-            'MLFLOW_TRACKING_PASSWORD': '{{ env.var.MLFLOW_TRACKING_PASSWORD }}',
-            'DAGSHUB_USER': '{{ env.var.DAGSHUB_USER }}',
-            'DAGSHUB_TOKEN': '{{ env.var.DAGSHUB_TOKEN }}',
-        },
     )
     stop_api = BashOperator(
         task_id='stop_api',
         bash_command="pkill -f 'uvicorn src.fastAPI.api' || true",
     )
-    # -----------------------------------------------------------    # Task 5: Model Evaluation
+    # -----------------------------------------------------------
+
+    # Task 5: Model Evaluation
     evaluate_model = BashOperator(
         task_id='evaluate_model',
         bash_command='cd /opt/airflow && python -m src.models.evaluate_model --model-path models/collaborative.pkl',
-        env={
-            'MLFLOW_TRACKING_URI': '{{ env.var.MLFLOW_TRACKING_URI }}',
-            'MLFLOW_TRACKING_USERNAME': '{{ env.var.MLFLOW_TRACKING_USERNAME }}',
-            'MLFLOW_TRACKING_PASSWORD': '{{ env.var.MLFLOW_TRACKING_PASSWORD }}',
-            'DAGSHUB_USER': '{{ env.var.DAGSHUB_USER }}',
-            'DAGSHUB_TOKEN': '{{ env.var.DAGSHUB_TOKEN }}',
-        },
     )   
 
     
